@@ -122,7 +122,7 @@ def onAppStart(app):
     app.spell = ''
     initializeSpells(app)
     initializeMap(app)
-    app.player = Player(200, 200, 32, 32, sprite='Sprites/Mage-1.png')
+    #app.player = Player(200, 200, 32, 32, sprite='Sprites/Mage-1.png')
 
 def initializeSpells(app):
     app.spells = {'Dash':['blue'], 'Fireball':['red', 'green', 'red'], 'Thunder':['blue', 'red']}
@@ -159,8 +159,9 @@ def movePlayer(app, keys):
         app.camX += 3
 
 def redrawAll(app):
+    drawLabel('Press "R" to open mic and "S" to close',200, 20)
     app.map.draw(app)
-    app.player.draw()
+    #app.player.draw()
     drawLabel(app.message, 200, 200, size = 20)
     drawLabel(app.frequency, 200, 240, size = 20)
     drawLabel(app.spell, 200, 300, size = 15)
