@@ -7,48 +7,233 @@ import numpy as np
 from scipy.signal import find_peaks
 
 class map:
-    def __init__(self, objects = None):
+    def __init__(self, blockSize = app.width):
+        self.blockSize = blockSize
         self.objects = []
-        if(isinstance(objects, list)):
-            self.objects = objects
+        self.enemies = []
+        self.objectBlocks = dict()
+        self.enemyBlocks = dict()
     
     def addObject(self, object):
-        if(isinstance(object, mapObject)):
+        if(isinstance(object, MapObject)):
             self.objects.append(object)
+            edges = object.getEdges()
+            blocks = set()
+            for edge in edges:
+                x,y = edge
+                block = self.getBlock(x,y)
+                if(block not in blocks):
+                    blocks.add(block)
+                    self.objectBlocks[block] = self.objectBlocks.get(block, set())
+                    self.objectBlocks[block].add(object)
+            print(self.objectBlocks)
+
+    def addEnemy(self, enemy):
+        if(isinstance(enemy, Enemy)):
+            self.enemies.append(enemy)
+            edges = enemy.getEdges()
+            blocks = set()
+            for edge in edges:
+                x,y = edge
+                block = self.getBlock(x,y)
+                if(block not in blocks):
+                    blocks.add(block)
+                    self.enemyBlocks[block] = self.enemyBlocks.get(block, set())
+                    self.enemyBlocks[block].add(object)
+            print(self.enemyBlocks)
+
+    def getBlocks(self, edgeList):
+        blockList = set()
+        for edge in edgeList:
+            x,y = edge
+            blockList.add(self.getBlock(x,y))
+        return blockList
+            
+    def getBlock(self, x, y):
+        signX = 1
+        signY = 1
+        if(x < 0):
+            signX = -1
+        if(y < 0):
+            signY = -1
+        x = abs(x)
+        y = abs(y)
+        blockX = signX * ((x // self.blockSize) + 1)
+        blockY = signY * ((y // self.blockSize) + 1)
+        return (blockX, blockY)
+
+    def checkAllObjectCollision(self, other):
+        blocks = self.getBlocks(other.getEdges())
+        hasCollided = False
+        for block in blocks:
+            print(self.objectBlocks.get(block, []), end='')
+            for object in self.objectBlocks.get(block, []):
+                if(object.checkCollision(other)):
+                    hasCollided = True
+        print()
+        return hasCollided
+
+    def checkInteraction(self, other, radius):
+        blocks = self.getBlocks(other.getEdges())
+        hasCollided = False
+        for block in blocks:
+            for object in self.objectBlocks.get(block, []):
+                for dx in {radius, -radius}:
+                    if(object.checkCollision((other.x+dx, other.y, other.width, other.height))):
+                        object.interact(other)
+                        return True
+                for dy in {radius, -radius}:
+                    if(object.checkCollision((other.x, other.y+dy, other.width, other.height))):
+                        object.interact(other)
+                        return True
+
+    def enemiesFollowPlayer(self, app):
+        for enemy in self.enemies:
+            enemy.followPlayer(app)
 
     def draw(self, app):
         for obj in self.objects:
             obj.draw(app)
+        for enemy in self.enemies:
+            enemy.draw(app)
 
 
-class mapObject:
+class MapObject:
     def __init__(self, x, y, height = None, width = None, radius = None, color = None, shape = None):
         self.color = 'black' if color == None else color
         self.x = x
         self.y = y
+        self.radius = radius
         self.height = height
         self.width = width
-        self.radius = radius
+        if(radius != None):
+            self.height = radius*2
+            self.width = radius*2
         self.shape = shape
+
+    def __repr__(self):
+        return f'<MapObject: {self.shape} at ({self.x}, {self.y})>'
     
     def draw(self, app):
         if(self.shape == 'circle'):
-            drawCircle(self.x + app.camX, self.y + app.camY, self.radius, fill=self.color)
+            drawCircle(self.x - app.camX, self.y - app.camY, self.radius, fill=self.color, align='top-left')
         elif(self.shape == 'rect'):
-            drawRect(self.x + app.camX, self.y + app.camY, self.width, self.height, fill=self.color)
+            drawRect(self.x - app.camX, self.y - app.camY, self.width, self.height, fill=self.color)
         elif(self.shape == 'img'):
             pass
+    
+    def getEdges(self):
+        return [(self.x, self.y), (self.x + self.width, self.y), (self.x, self.y - self.height), (self.x + self.width, self.y + self.height)]
 
-class Player:
-    def __init__(self, x, y, width, height, sprite):
+    def checkCollision(self, other):
+        if(isinstance(other, tuple)):
+            otherX, otherY, otherWidth, otherHeight = other
+        else:
+            otherX, otherY, otherWidth, otherHeight = other.x, other.y, other.width, other.height
+
+        withinXBounds = False
+        for x in {otherX, otherX + otherWidth}:
+            if(self.x < x < self.x+self.width):
+                withinXBounds = True
+        if(not withinXBounds):
+            return False
+        for y in {otherY, otherY + otherHeight}:
+            if(self.y < y < self.y + self.height):
+                self.collide(other)
+                return True
+
+    def collide(self, other):
+        print(f'{self} collided w/ {other}')
+
+    def interact(self, other):
+        print(f'<{other} interacted w/ {self}')
+
+class ReadableObject(MapObject):
+    def __init__(self, x, y, height = None, width = None, radius = None, color = None, shape = None, message=''):
+        super().__init__(x, y, height, width, radius, color, shape)
+        self.message = message
+
+    def interact(self, other):
+        print(self.message)
+
+class Enemy:
+    def __init__(self, x, y, width, height, sprite, speed=2):
         self.x = x
         self.y = y
         self.width = width
         self.height = height
-        self.sprite = Image.open(sprite)
+        self.sprite = sprite
+        self.speed = speed
 
-    def draw(self):
-        pass
+    def draw(self, app):
+        drawRect(self.x - app.camX, self.y - app.camY, self.width, self.height, fill='lightGreen')
+
+    def interact(self, app):
+        app.map.checkInteraction(self, self.speed)
+
+    def __repr__(self):
+        return f'<Enemy at {(self.x, self.y)}>'
+
+    def getEdges(self):
+        return [(self.x, self.y), (self.x + self.width, self.y), (self.x, self.y - self.height), (self.x + self.width, self.y + self.height)]
+
+    def followPlayer(self, app):
+        target = (app.player.x, app.player.y)
+        distanceToTarget = ((target[0]-self.x)**2 + (target[1]-self.y)**2)**0.5
+        dx = (self.speed/distanceToTarget) * (target[0]-self.x)
+        dy = (self.speed/distanceToTarget) * (target[1]-self.y)
+        self.move(dx, dy)
+        
+    def move(self, dx, dy):
+        self.x += dx
+        self.y += dy
+        
+            
+
+class Player:
+    def __init__(self, x, y, width, height, sprite, speed=3):
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+        self.sprite = sprite
+        self.speed = speed
+
+    def draw(self, app):
+        drawRect(self.x - app.camX, self.y - app.camY, self.width, self.height, fill='black')
+
+    def move(self, app, keys):
+        dx = 0
+        dy = 0
+        if('w' in keys):
+            dy -= self.speed
+        if('a' in keys):
+            dx -= self.speed
+        if('s' in keys):
+            dy += self.speed
+        if('d' in keys):
+            dx += self.speed
+
+        app.camX += dx
+        app.camY += dy
+        self.x += dx
+        self.y += dy
+
+        if(not(dx == 0 and dy == 0)):
+            if(app.map.checkAllObjectCollision(self)):
+                app.camX -= dx
+                app.camY -= dy
+                self.x -= dx
+                self.y -= dy
+
+    def interact(self, app):
+        app.map.checkInteraction(self, self.speed)
+
+    def __repr__(self):
+        return f'<Player at {(self.x, self.y)}>'
+
+    def getEdges(self):
+        return [(self.x, self.y), (self.x + self.width, self.y), (self.x, self.y - self.height), (self.x + self.width, self.y + self.height)]
 
 # Function to map frequency to musical note
 def frequency_to_note(freq):
@@ -66,23 +251,23 @@ def evaluatePitch(app):
     if(not app.isRecording):
         return
     
-    data = app.stream.read(1024)
-    framesData = np.frombuffer(data, dtype=np.int16)
+    data = app.stream.read(1024) #Chat GPT
+    framesData = np.frombuffer(data, dtype=np.int16) #Chat GPT
 
     # Apply a window function
-    window = np.hanning(len(framesData))
-    framesData_windowed = framesData * window
+    window = np.hanning(len(framesData)) #Chat GPT
+    framesData_windowed = framesData * window #Chat GPT
 
     # Perform FFT
-    freq_data = np.fft.fft(framesData_windowed)
-    freq_magnitude = np.abs(freq_data)
+    freq_data = np.fft.fft(framesData_windowed) #Chat GPT
+    freq_magnitude = np.abs(freq_data) #Chat GPT
 
     # Find peaks in the frequency magnitude
-    peaks, properties = find_peaks(freq_magnitude[:len(freq_magnitude)//2], height=app.confidence_threshold, distance=5)
+    peaks, properties = find_peaks(freq_magnitude[:len(freq_magnitude)//2], height=app.confidence_threshold, distance=5) #Chat GPT
 
     if peaks.size > 0:
-        peak_index = peaks[np.argmax(properties['peak_heights'])]
-        peak_freq = abs(np.fft.fftfreq(len(framesData), 1/44100)[peak_index])
+        peak_index = peaks[np.argmax(properties['peak_heights'])] #Chat GPT
+        peak_freq = abs(np.fft.fftfreq(len(framesData), 1/44100)[peak_index]) #Chat GPT
         note = frequency_to_note(peak_freq)
         app.freqList.pop(0)
         app.freqList.append(peak_freq)
@@ -98,6 +283,8 @@ def evaluatePitch(app):
 
 def onAppStart(app):
 
+    app.step = 0
+
     app.audio = pyaudio.PyAudio()
     app.stream = app.audio.open(format=pyaudio.paInt16, channels=1, rate=44100, input=True, frames_per_buffer=1024)
 
@@ -109,7 +296,6 @@ def onAppStart(app):
     app.freqList = [0,0,0]
     app.noteList = ['C0', 'C0', 'C0']
     app.prevNote = 'C0'
-    app.circleHeight = 0
     app.note = 'C0'
 
     app.color = 'black'
@@ -122,7 +308,7 @@ def onAppStart(app):
     app.spell = ''
     initializeSpells(app)
     initializeMap(app)
-    #app.player = Player(200, 200, 32, 32, sprite='Sprites/Mage-1.png')
+    app.player = Player(app.width/2 - 16, app.height/2 - 16, 32, 32, sprite='Sprites/Mage-1.png', speed=3)
 
 def initializeSpells(app):
     app.spells = {'Dash':['blue'], 'Fireball':['red', 'green', 'red'], 'Thunder':['blue', 'red']}
@@ -130,8 +316,9 @@ def initializeSpells(app):
 def initializeMap(app):
     app.map = map()
     app.camX, app.camY = 0, 0
-    app.map.addObject(mapObject(0, 0, shape='rect', width=50, height=50, color='maroon'))
-    app.map.addObject(mapObject(50, 320, shape='circle', radius=20, color='purple'))
+    app.map.addObject(ReadableObject(0, 0, shape='rect', width=50, height=50, color='maroon', message="I'm a bookshelf!"))
+    app.map.addObject(MapObject(50, 320, shape='circle', radius=20, color='purple'))
+    app.map.addEnemy(Enemy(300, 300, 32, 32, sprite='', speed=2))
 
 def onKeyPress(app, key):
     if(key == 'r'):
@@ -144,24 +331,16 @@ def onKeyPress(app, key):
         if(app.readCommand):
             evaluateCommand(app)
         app.readCommand = not app.readCommand
+    elif(key == 'e'):
+        app.player.interact(app)
 
 def onKeyHold(app, keys):
-    movePlayer(app, keys)
-
-def movePlayer(app, keys):
-    if('w' in keys):
-        app.camY -= 3
-    if('a' in keys):
-        app.camX -= 3
-    if('s' in keys):
-        app.camY += 3
-    if('d' in keys):
-        app.camX += 3
+    app.player.move(app, keys)
 
 def redrawAll(app):
     drawLabel('Press "R" to open mic and "S" to close',200, 20)
     app.map.draw(app)
-    #app.player.draw()
+    app.player.draw(app)
     drawLabel(app.message, 200, 200, size = 20)
     drawLabel(app.frequency, 200, 240, size = 20)
     drawLabel(app.spell, 200, 300, size = 15)
@@ -230,9 +409,12 @@ def readCommand(app):
 
 
 def onStep(app):
+    app.step += 1
     evaluatePitch(app)
     evaluateColor(app)
     readCommand(app)
+    app.map.enemiesFollowPlayer(app)
+    
 
 def main():
     runApp()
