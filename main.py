@@ -1,3 +1,4 @@
+import time
 from cmu_graphics import *
 from Sprites import *
 from PIL import Image
@@ -7,6 +8,8 @@ import numpy as np
 from scipy.signal import find_peaks
 
 from frequencyDetection import *
+
+from spells import *
 
 def distance(x1, y1, x2, y2):
     return ((x1-x2)**2 + (y1-y2)**2)**0.5
@@ -79,12 +82,18 @@ class map:
         blocks = self.getBlocks(other.getEdges())
         hasCollided = False
         for block in blocks:
-            #print(self.objectBlocks.get(block, []), end='')
             for object in self.objectBlocks.get(block, []):
                 if(object.checkCollision(other)):
                     hasCollided = True
-        #print()
+
         return hasCollided
+    
+    def checkAllEnemiesCollision(self, other):
+        for enemy in self.enemies:
+            if(enemy.checkCollision(other)):
+                return True
+        return False
+
 
     def checkInteraction(self, other, radius):
         blocks = self.getBlocks(other.getEdges())
@@ -221,11 +230,38 @@ class Enemy:
         distanceToTarget = ((target[0]-self.x)**2 + (target[1]-self.y)**2)**0.5
         dx = (self.speed/distanceToTarget) * (target[0]-self.x)
         dy = (self.speed/distanceToTarget) * (target[1]-self.y)
-        self.move(dx, dy)
+        self.move(app, dx, dy)
+
+    def checkCollision(self, other):
+        if(isinstance(other, tuple)):
+            otherX, otherY, otherWidth, otherHeight = other
+        else:
+            otherX, otherY, otherWidth, otherHeight = other.x, other.y, other.width, other.height
+
+        withinXBounds = False
+        for x in {otherX, otherX + otherWidth}:
+            if(self.x < x < self.x+self.width):
+                withinXBounds = True
+        if(not withinXBounds):
+            return False
+        for y in {otherY, otherY + otherHeight}:
+            if(self.y < y < self.y + self.height):
+                self.collide(other)
+                return True
+            
+    def collide(self, other):
+        pass
         
-    def move(self, dx, dy):
+    def move(self, app, dx, dy):
         self.x += dx
+        if(not(dx == 0)):
+            if(app.map.checkAllObjectCollision(self) or app.map.checkAllEnemiesCollision(self)):
+                self.x -= dx
+
         self.y += dy
+        if(not(dy == 0)):
+            if(app.map.checkAllObjectCollision(self) or app.map.checkAllEnemiesCollision(self)):
+                self.y -= dy
 
     def canSee(self, app, other):
         tileSize = 64
@@ -303,16 +339,20 @@ class Player:
         if('d' in keys):
             dx += self.speed
 
-        app.camX += dx
-        app.camY += dy
         self.x += dx
-        self.y += dy
+        app.camX += dx
 
-        if(not(dx == 0 and dy == 0)):
+        if(not(dx == 0)):
             if(app.map.checkAllObjectCollision(self)):
                 app.camX -= dx
-                app.camY -= dy
                 self.x -= dx
+
+        self.y += dy
+        app.camY += dy
+
+        if(not(dy == 0)):
+            if(app.map.checkAllObjectCollision(self)):
+                app.camY -= dy
                 self.y -= dy
 
     def interact(self, app):
@@ -329,6 +369,8 @@ def onAppStart(app):
     app.width = 800
     app.height = 800
     app.step = 0
+    app.frameRate = 0
+    app.startTime = time.time()
     app.stepMode = True
 
     app.audio = pyaudio.PyAudio()
@@ -352,17 +394,13 @@ def onAppStart(app):
     app.commandTimer = 0
 
     app.spell = ''
-    initializeSpells(app)
     initializeMap(app)
     app.player = Player(app.width/2 - 16, app.height/2 - 16, 32, 32, sprite='C:\CMU/Classes/15112/TermProject/Sprites/Mage-1.png', speed=3)
-
-def initializeSpells(app):
-    app.spells = {'Dash':['blue'], 'Fireball':['red', 'green', 'red'], 'Thunder':['blue', 'red']}
 
 def initializeMap(app):
     app.map = map()
     app.camX, app.camY = 0, 0
-    app.map.addObject(ReadableObject(0, 0, shape='rect', width=50, height=50, color='maroon', message="I'm a bookshelf!"))
+    app.map.addObject(ReadableObject(0, 0, shape='rect', width=64, height=64, color='maroon', message="I'm a bookshelf!"))
     app.map.addObject(MapObject(50, 320, shape='circle', radius=20, color='purple'))
     app.map.addEnemy(Enemy(300, 300, 32, 32, sprite='', speed=2))
     app.map.addEnemy(Enemy(200, 200, 32, 32, sprite='', speed=2))
@@ -379,7 +417,7 @@ def onKeyPress(app, key):
         app.message = 'Stopped'
     elif(key == 'c'):
         if(app.readCommand):
-            evaluateCommand(app)
+            app.spell = evaluateCommand(app)
         app.readCommand = not app.readCommand
     elif(key == 'e'):
         app.player.interact(app)
@@ -393,6 +431,7 @@ def onKeyHold(app, keys):
 
 def redrawAll(app):
     drawLabel('Press "R" to open mic and "S" to close',400, 20)
+    drawLabel(f'frame rate: {app.frameRate}', app.width - 80, 20)
     micColor = 'gray'
     if(app.isRecording): micColor = 'red'
     drawCircle(750, 750, 5, fill=micColor)
@@ -423,41 +462,14 @@ def drawCommand(app):
         drawCircle(curXPos, 300, 10, fill=command)
         curXPos += 8
 
-def evaluateCommand(app):
-    foundSpell = False
-    for spell in app.spells:
-        if(app.spells[spell] == app.command):
-            print(f"Cast {spell}")
-            app.spell = spell
-            foundSpell = True
-    
-    if(not foundSpell):
-        app.spell = 'Spell Not found'
-
-    app.commandTimer = 0
-
-def readCommand(app):
-    if(not app.readCommand):
-        app.prevCommand = None
-
-        if app.commandTimer < (1 * app.stepsPerSecond):
-            app.commandTimer += 1
-        else:
-            app.spell = ''
-            app.command = []
-        return
-    
-    if(app.prevCommand == None):
-        app.command = [app.color]
-        app.prevCommand = app.color
-    elif(app.prevCommand != app.color):
-        app.command.append(app.color)
-        app.prevCommand = app.color
-
 
 def onStep(app):
     if(not app.stepMode):
         takeStep(app)
+    if(app.step % 30 == 0):
+        curTime = time.time()
+        app.frameRate = int(30/(curTime-app.startTime))
+        app.startTime = curTime
 
 def takeStep(app):
     app.step += 1

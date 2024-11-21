@@ -35,9 +35,9 @@ def evaluatePitch(app, noteList):
         note = frequency_to_note(peak_freq)
         noteList.pop(0)
         noteList.append(note)
-        print(f"Detected note: {app.note} (Frequency: {app.frequency} Hz)")
     
     if(noteList[0] == noteList[1] == noteList[2]):
+        print(f"Detected note: {noteList[0]} (Frequency: {app.frequency} Hz)")
         return noteList[0]
 
     return None
