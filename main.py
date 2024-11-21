@@ -6,6 +6,8 @@ import pyaudio
 import numpy as np
 from scipy.signal import find_peaks
 
+from frequencyDetection import *
+
 def distance(x1, y1, x2, y2):
     return ((x1-x2)**2 + (y1-y2)**2)**0.5
 
@@ -322,52 +324,6 @@ class Player:
     def getEdges(self):
         return [(self.x, self.y), (self.x + self.width, self.y), (self.x, self.y - self.height), (self.x + self.width, self.y + self.height)]
 
-# Function to map frequency to musical note
-def frequency_to_note(freq):
-    A4 = 440.0  # Frequency of A4
-    C0 = A4 * 2**(-4.75)  # Frequency of C0
-    note_names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
-    if freq == 0:
-        return "No note"
-    h = pythonRound(12 * np.log2(freq / C0))
-    octave = h // 12
-    n = h % 12
-    return note_names[n] + str(octave)
-
-def evaluatePitch(app):
-    if(not app.isRecording):
-        return
-    
-    data = app.stream.read(1024) #Chat GPT
-    framesData = np.frombuffer(data, dtype=np.int16) #Chat GPT
-
-    # Apply a window function
-    window = np.hanning(len(framesData)) #Chat GPT
-    framesData_windowed = framesData * window #Chat GPT
-
-    # Perform FFT
-    freq_data = np.fft.fft(framesData_windowed) #Chat GPT
-    freq_magnitude = np.abs(freq_data) #Chat GPT
-
-    # Find peaks in the frequency magnitude
-    peaks, properties = find_peaks(freq_magnitude[:len(freq_magnitude)//2], height=app.confidence_threshold, distance=5) #Chat GPT
-
-    if peaks.size > 0:
-        peak_index = peaks[np.argmax(properties['peak_heights'])] #Chat GPT
-        peak_freq = abs(np.fft.fftfreq(len(framesData), 1/44100)[peak_index]) #Chat GPT
-        note = frequency_to_note(peak_freq)
-        app.freqList.pop(0)
-        app.freqList.append(peak_freq)
-        app.noteList.pop(0)
-        app.noteList.append(note)
-        #print(f"Detected note: {app.note} (Frequency: {app.frequency} Hz)")
-    
-    if(app.freqList[0] == app.freqList[1] == app.freqList[2]):
-        app.frequency = app.freqList[0]
-    
-    if(app.noteList[0] == app.noteList[1] == app.noteList[2]):
-        app.note = app.noteList[0]
-
 def onAppStart(app):
 
     app.width = 800
@@ -437,6 +393,9 @@ def onKeyHold(app, keys):
 
 def redrawAll(app):
     drawLabel('Press "R" to open mic and "S" to close',400, 20)
+    micColor = 'gray'
+    if(app.isRecording): micColor = 'red'
+    drawCircle(750, 750, 5, fill=micColor)
     app.map.draw(app)
     app.player.draw(app)
     #drawLabel(app.message, 200, 40, size = 20)
@@ -463,16 +422,6 @@ def drawCommand(app):
     for command in app.command:
         drawCircle(curXPos, 300, 10, fill=command)
         curXPos += 8
-    
-
-def evaluateColor(app):
-    app.color = 'black'
-    if (app.note[:-1] == 'C' or app.note[:-1] == 'C#' or app.note[:-1] == 'F#' or app.note[:-1] == 'G'):
-        app.color = 'red'
-    elif (app.note[:-1] == 'D' or app.note[:-1] == 'D#' or app.note[:-1] == 'G#' or app.note[:-1] == 'A'):
-        app.color = 'blue'
-    elif (app.note[:-1] == 'E' or app.note[:-1] == 'F' or app.note[:-1] == 'A#' or app.note[:-1] == 'B'):
-        app.color = 'green'
 
 def evaluateCommand(app):
     foundSpell = False
@@ -512,10 +461,15 @@ def onStep(app):
 
 def takeStep(app):
     app.step += 1
-    evaluatePitch(app)
-    evaluateColor(app)
+    record(app)
     readCommand(app)
     app.map.enemiesFollowPlayer(app)
+
+def record(app):
+    if(app.isRecording): 
+        app.note = evaluatePitch(app, app.noteList)
+        voiceColor = evaluateColor(app.note)
+        if(voiceColor != None): app.color = voiceColor
     
 
 def main():
