@@ -333,6 +333,8 @@ class Player:
         self.health = 10
         self.isImmune = False
         self.immunityTimer = 0
+        self.isDashing = False
+        self.dashTimer = 0
 
     def draw(self, app):
         drawImage(self.sprite, self.x - app.camX, self.y - app.camY)
@@ -352,10 +354,22 @@ class Player:
         self.isImmune = True
         self.immunityTimer = 0
 
-    def checkImmunity(self):
-        self.immunityTimer += 1
+    def checkImmunity(self, secondsPassed):
+        self.immunityTimer += secondsPassed
         if(self.immunityTimer >= 2):
             self.isImmune = False
+
+    def dash(self):
+        self.speed *= 2
+        self.dashTimer = 0.5
+        self.isDashing = True
+
+    def trackDash(self, secondsPassed):
+        if(self.isDashing):
+            self.dashTimer -= secondsPassed
+            if(self.dashTimer < 0):
+                self.isDashing = False
+                self.speed //= 2
 
     def move(self, app, keys):
         dx = 0
@@ -393,6 +407,9 @@ class Player:
 
     def getEdges(self):
         return [(self.x, self.y), (self.x + self.width, self.y), (self.x, self.y - self.height), (self.x + self.width, self.y + self.height)]
+    
+    def castSpell(self, app, spell):
+        cast(app, self, spell)
 
     def death(self):
         print("Gameover")
@@ -427,6 +444,9 @@ def onAppStart(app):
     app.commandTimer = 0
 
     app.spell = ''
+    app.spellCooldown = 0
+    app.startingSpellCooldown = 0
+
     initializeMap(app)
     app.player = Player(app.width/2 - 16, app.height/2 - 16, 32, 32, sprite='C:\CMU/Classes/15112/TermProject/Sprites/Mage-1.png', speed=3)
 
@@ -443,15 +463,12 @@ def initializeMap(app):
 
 def onKeyPress(app, key):
     if(key == 'r'):
-        app.isRecording = True
-        app.message = "Recording..."
-    elif(key == 's'):
-        app.isRecording = False
-        app.message = 'Stopped'
+        app.isRecording = not app.isRecording
     elif(key == 'c'):
-        if(app.readCommand):
-            app.spell = evaluateCommand(app)
-        app.readCommand = not app.readCommand
+        if(app.spellCooldown <= 0):
+            if(app.readCommand):
+                evaluateCommand(app)
+            app.readCommand = not app.readCommand
     elif(key == 'e'):
         app.player.interact(app)
     elif(key == 'p'):
@@ -463,7 +480,7 @@ def onKeyHold(app, keys):
     app.player.move(app, keys)
 
 def redrawAll(app):
-    drawLabel('Press "R" to open mic and "S" to close',400, 20)
+    drawLabel('Press "R" to open and close mic (bottom right). red --> open',400, 20)
     drawLabel(f'frame rate: {app.frameRate}', app.width - 80, 20)
     micColor = 'gray'
     if(app.isRecording): micColor = 'red'
@@ -474,6 +491,7 @@ def redrawAll(app):
     #drawLabel(app.frequency, 200, 240, size = 20)
     drawLabel(app.spell, 200, 300, size = 15)
     drawMeter(app)
+    drawSpellCooldown(app, 50, 20, 100, 10)
     drawCommand(app)
     app.player.drawHealthBar(600, 750, 20)
 
@@ -487,6 +505,12 @@ def drawMeter(app):
     elif(app.color == 'red'):
         yPos = 105
     drawCircle(15, yPos, 7, fill='black')
+
+def drawSpellCooldown(app, x, y, width, height):
+    drawRect(x, y, width, height, fill='white')
+    if(app.spellCooldown > 0.1):
+        drawRect(x, y, (app.spellCooldown/app.startingSpellCooldown)*width, height, fill='lightBlue')
+    drawRect(x, y, width, height, fill=None, border='black', borderWidth=3)
 
 def drawCommand(app):
 
@@ -512,8 +536,10 @@ def takeStep(app):
     readCommand(app)
     app.map.enemiesFollowPlayer(app)
 
-    if(app.step % app.stepsPerSecond == 0):
-        app.player.checkImmunity()
+    if(app.step % (app.stepsPerSecond//10) == 0):
+        app.player.checkImmunity((app.stepsPerSecond // 10) / app.stepsPerSecond)
+        app.player.trackDash((app.stepsPerSecond // 10) / app.stepsPerSecond)
+        trackSpellCooldown(app, (app.stepsPerSecond // 10) / app.stepsPerSecond)
     
 
 def record(app):
