@@ -46,4 +46,7 @@ def cast(app, player, spell):
 
     if(spell == 'Dash'):
         player.dash()
+    
+    if(spell == 'Fireball'):
+        pass
         

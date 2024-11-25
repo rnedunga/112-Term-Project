@@ -27,6 +27,7 @@ class map:
         self.blockSize = blockSize
         self.objects = []
         self.enemies = []
+        self.projectiles = []
         self.objectBlocks = dict()
         self.enemyBlocks = dict()
     
@@ -57,6 +58,19 @@ class map:
                     self.enemyBlocks[block] = self.enemyBlocks.get(block, set())
                     self.enemyBlocks[block].add(object)
             #print(self.enemyBlocks)
+
+    def addProjectile(self, projectile):
+        self.projectiles.append(projectile)
+
+    def moveProjectiles(self, app):
+        for projectile in self.projectiles:
+            projectile.move()
+            for enemy in self.enemies:
+                projectile.checkCollision(app, enemy)
+            blocks = self.getBlocks([(projectile.x, projectile.y), (projectile.x+(projectile.radius*2), projectile.y), (projectile.x, projectile.y+(projectile.radius)*2), (projectile.x+(projectile.radius*2), projectile.y+(projectile.radius*2))])
+            for block in blocks:
+                for object in self.objectBlocks[block]:
+                    projectile.checkCollision(app, object)
 
     def getBlocks(self, edgeList):
         blockList = set()
@@ -130,6 +144,8 @@ class map:
             obj.draw(app)
         for enemy in self.enemies:
             enemy.draw(app)
+        for projectile in self.projectiles:
+            projectile.draw(app)
 
 
 class MapObject:
@@ -204,11 +220,25 @@ class Enemy:
         self.visionBlocked = False
         self.health = 4
 
+    def __eq__(self, other):
+        if(isinstance(other, Enemy)):
+            return (self.x, self.y) == (other.x, other.y)
+        return False
+
     def draw(self, app):
         drawRect(self.x - app.camX, self.y - app.camY, self.width, self.height, fill='lightGreen')
 
     def dealDamage(self, other):
         other.takeDamage(1)
+    
+    def takeDamage(self, app, damage):
+        self.health -= damage
+        if(self.health <= 0):
+            self.death(app)
+    
+    def death(self, app):
+        if self in app.map.enemies:
+            app.map.enemies.remove(self)
 
     def interact(self, app):
         app.map.checkInteraction(self, self.speed)
@@ -420,6 +450,51 @@ class Player:
     def death(self):
         print("Gameover")
 
+class Projectile:
+    def __init__(self, x, y, dx, dy, targetType):
+        self.x = x
+        self.y = y
+        self.radius = 3
+        self.dx = dx
+        self.dy = dy
+        self.targetType = targetType
+
+    def __eq__(self, other):
+        if(isinstance(other, Projectile)):
+            return (self.x, self.y, self.radius) == (self.x, self.y, self.radius)
+        return False
+    
+    def draw(self, app):
+        drawCircle(self.x - app.camX, self.y-app.camY, self.radius, align='top-left', fill='black')
+
+    def move(self):
+        self.x += self.dx
+        self.y += self.dy
+
+    def checkCollision(self, app, other):
+
+        hasCollided = False
+        if(isinstance(other, MapObject)):
+            if(other.checkCollision((self.x, self.y, self.radius, self.radius))):
+                hasCollided = True
+                self.objectCollide(app, other)
+        elif(isinstance(other, Enemy)):
+            if(other.checkCollision((self.x, self.y, self.radius, self.radius))):
+                hasCollided = True
+                self.enemyCollide(app, other)
+                
+        return hasCollided
+
+    def objectCollide(self, app, object):
+        self.destroy(app)
+
+    def enemyCollide(self, app, enemy):
+        enemy.takeDamage(app, 5)
+
+    def destroy(self, app):
+        if(self in app.map.projectiles):
+            app.map.projectiles.remove(self)
+
 def onAppStart(app):
 
     app.width = 800
@@ -465,6 +540,7 @@ def initializeMap(app):
     app.map.addEnemy(Enemy(200, 200, 32, 32, sprite='', speed=2))
     app.map.addEnemy(Enemy(100, 100, 32, 32, sprite='', speed=2))
     app.map.addEnemy(Enemy(0, 0, 32, 32, sprite='', speed=2))
+    app.map.addProjectile(Projectile(app.width/2 - 16, app.height/2 - 16, -3, -3, Enemy))
 
 
 def onKeyPress(app, key):
@@ -541,6 +617,7 @@ def takeStep(app):
     record(app)
     readCommand(app)
     app.map.enemiesFollowPlayer(app)
+    app.map.moveProjectiles(app)
 
     if(app.step % (app.stepsPerSecond//10) == 0):
         app.player.checkImmunity((app.stepsPerSecond // 10) / app.stepsPerSecond)
