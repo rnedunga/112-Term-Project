@@ -304,9 +304,15 @@ class Enemy:
                     distYToEdge = distance(0, 0, distToY*(distX/distY), distToY)
                 
                 if distXToEdge < distYToEdge:
-                    curCheck = (curCheck[0] + (normX*distToX), curCheck[1] + normY * (distToX * abs(dir[1] / dir[0])))
+                    ratio = 0
+                    if(dir[0] != 0):
+                        ratio = abs(dir[1] / dir[0])
+                    curCheck = (curCheck[0] + (normX*distToX), curCheck[1] + normY * (distToX * ratio))
                 else:
-                    curCheck = (curCheck[0] + normX*(distToY * abs(dir[0] / dir[1])), curCheck[1] + (normY*distToY))
+                    ratio = 0
+                    if(dir[1] != 0):
+                        ratio = abs(dir[0] / dir[1])
+                    curCheck = (curCheck[0] + normX*(distToY * ratio), curCheck[1] + (normY*distToY))
 
                 
                 curCheck = (roundInt(curCheck[0]), roundInt(curCheck[1]))
