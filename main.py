@@ -94,7 +94,6 @@ class map:
                 return True
         return False
 
-
     def checkInteraction(self, other, radius):
         blocks = self.getBlocks(other.getEdges())
         hasCollided = False
@@ -203,9 +202,13 @@ class Enemy:
         self.speed = speed
         self.visionLimit = 300
         self.visionBlocked = False
+        self.health = 4
 
     def draw(self, app):
         drawRect(self.x - app.camX, self.y - app.camY, self.width, self.height, fill='lightGreen')
+
+    def dealDamage(self, other):
+        other.takeDamage(1)
 
     def interact(self, app):
         app.map.checkInteraction(self, self.speed)
@@ -255,13 +258,18 @@ class Enemy:
     def move(self, app, dx, dy):
         self.x += dx
         if(not(dx == 0)):
-            if(app.map.checkAllObjectCollision(self) or app.map.checkAllEnemiesCollision(self)):
+            if(app.map.checkAllObjectCollision(self) or self.checkCollisionWithPlayer(app) or app.map.checkAllEnemiesCollision(self)):
                 self.x -= dx
 
         self.y += dy
         if(not(dy == 0)):
-            if(app.map.checkAllObjectCollision(self) or app.map.checkAllEnemiesCollision(self)):
+            if(app.map.checkAllObjectCollision(self) or self.checkCollisionWithPlayer(app) or app.map.checkAllEnemiesCollision(self)):
                 self.y -= dy
+
+    def checkCollisionWithPlayer(self,app):
+
+        if(self.checkCollision(app.player)):
+            self.dealDamage(app.player)
 
     def canSee(self, app, other):
         tileSize = 64
@@ -322,10 +330,32 @@ class Player:
         self.height = height
         self.sprite = sprite
         self.speed = speed
+        self.health = 10
+        self.isImmune = False
+        self.immunityTimer = 0
 
     def draw(self, app):
         drawImage(self.sprite, self.x - app.camX, self.y - app.camY)
-        #drawRect(self.x - app.camX, self.y - app.camY, self.width, self.height, fill='black')
+
+    def drawHealthBar(self, x, y, height):
+        drawRect(x, y, self.health*10, height, fill='red', borderWidth=4, border='black')
+
+    def takeDamage(self, damage):
+        if(not self.isImmune):
+            if(self.health <= 0):
+                self.death()
+            else:
+                self.health -= damage
+                self.startImmunity()
+
+    def startImmunity(self):
+        self.isImmune = True
+        self.immunityTimer = 0
+
+    def checkImmunity(self):
+        self.immunityTimer += 1
+        if(self.immunityTimer >= 2):
+            self.isImmune = False
 
     def move(self, app, keys):
         dx = 0
@@ -363,6 +393,9 @@ class Player:
 
     def getEdges(self):
         return [(self.x, self.y), (self.x + self.width, self.y), (self.x, self.y - self.height), (self.x + self.width, self.y + self.height)]
+
+    def death(self):
+        print("Gameover")
 
 def onAppStart(app):
 
@@ -442,6 +475,7 @@ def redrawAll(app):
     drawLabel(app.spell, 200, 300, size = 15)
     drawMeter(app)
     drawCommand(app)
+    app.player.drawHealthBar(600, 750, 20)
 
 def drawMeter(app):
     drawRect(5,5,20,40,fill='green')
@@ -466,16 +500,21 @@ def drawCommand(app):
 def onStep(app):
     if(not app.stepMode):
         takeStep(app)
-    if(app.step % 30 == 0):
+    if(app.step % app.stepsPerSecond == 0):
         curTime = time.time()
         app.frameRate = int(30/(curTime-app.startTime))
         app.startTime = curTime
+
 
 def takeStep(app):
     app.step += 1
     record(app)
     readCommand(app)
     app.map.enemiesFollowPlayer(app)
+
+    if(app.step % app.stepsPerSecond == 0):
+        app.player.checkImmunity()
+    
 
 def record(app):
     if(app.isRecording): 
