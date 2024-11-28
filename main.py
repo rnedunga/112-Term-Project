@@ -1,4 +1,5 @@
 import time
+import asyncio
 from cmu_graphics import *
 from Sprites import *
 from PIL import Image
@@ -8,8 +9,9 @@ import numpy as np
 from scipy.signal import find_peaks
 
 from frequencyDetection import *
-
+from colors import *
 from spells import *
+from animations import *
 
 def distance(x1, y1, x2, y2):
     return ((x1-x2)**2 + (y1-y2)**2)**0.5
@@ -21,6 +23,15 @@ def roundInt(x1):
     if((x1%base) > 0.5):
         return base+1
     return int(x1)
+
+def listFind(L, obj):
+    index = -1
+    try:
+        index = L.index(obj)
+    
+    except ValueError:
+        return -1
+    return index
 
 class map:
     def __init__(self, blockSize = app.width):
@@ -43,7 +54,6 @@ class map:
                     blocks.add(block)
                     self.objectBlocks[block] = self.objectBlocks.get(block, set())
                     self.objectBlocks[block].add(object)
-            #print(self.objectBlocks)
 
     def addEnemy(self, enemy):
         if(isinstance(enemy, Enemy)):
@@ -57,7 +67,6 @@ class map:
                     blocks.add(block)
                     self.enemyBlocks[block] = self.enemyBlocks.get(block, set())
                     self.enemyBlocks[block].add(object)
-            #print(self.enemyBlocks)
 
     def addProjectile(self, projectile):
         self.projectiles.append(projectile)
@@ -69,7 +78,7 @@ class map:
                 projectile.checkCollision(app, enemy)
             blocks = self.getBlocks([(projectile.x, projectile.y), (projectile.x+(projectile.radius*2), projectile.y), (projectile.x, projectile.y+(projectile.radius)*2), (projectile.x+(projectile.radius*2), projectile.y+(projectile.radius*2))])
             for block in blocks:
-                for object in self.objectBlocks[block]:
+                for object in self.objectBlocks.get(block, []):
                     projectile.checkCollision(app, object)
 
     def getBlocks(self, edgeList):
@@ -90,7 +99,7 @@ class map:
         y = abs(y)
         blockX = signX * ((x // self.blockSize) + 1)
         blockY = signY * ((y // self.blockSize) + 1)
-        return (blockX, blockY)
+        return (int(blockX), int(blockY))
 
     def checkAllObjectCollision(self, other):
         blocks = self.getBlocks(other.getEdges())
@@ -138,6 +147,10 @@ class map:
     def enemiesFollowPlayer(self, app):
         for enemy in self.enemies:
             enemy.followPlayer(app)
+    
+    def trackEnemies(self, secondsPassed):
+        for enemy in self.enemies:
+            enemy.trackZap(secondsPassed)
 
     def draw(self, app):
         for obj in self.objects:
@@ -194,11 +207,9 @@ class MapObject:
 
     def collide(self, other):
         pass
-        #print(f'{self} collided w/ {other}')
 
     def interact(self, other):
         pass
-        #print(f'<{other} interacted w/ {self}')
 
 class ReadableObject(MapObject):
     def __init__(self, x, y, height = None, width = None, radius = None, color = None, shape = None, message=''):
@@ -220,13 +231,19 @@ class Enemy:
         self.visionBlocked = False
         self.health = 4
 
+        self.defaultColor = RGBZOMBIE
+        self.color = [self.defaultColor[0], self.defaultColor[1], self.defaultColor[2]]
+
+        self.zapped = False
+        self.zapTimer = 0
+
     def __eq__(self, other):
         if(isinstance(other, Enemy)):
             return (self.x, self.y) == (other.x, other.y)
         return False
 
     def draw(self, app):
-        drawRect(self.x - app.camX, self.y - app.camY, self.width, self.height, fill='lightGreen')
+        drawRect(self.x - app.camX, self.y - app.camY, self.width, self.height, fill=rgb(*self.color))
 
     def dealDamage(self, other):
         other.takeDamage(1)
@@ -235,6 +252,17 @@ class Enemy:
         self.health -= damage
         if(self.health <= 0):
             self.death(app)
+    
+    def zap(self):
+        self.zapped = True
+        self.zapTimer = 3
+
+    def trackZap(self, secondsPassed):
+        if(self.zapped):
+            if(self.zapTimer <= 0):
+                self.zapped = False
+            else:
+                self.zapTimer -= secondsPassed
     
     def death(self, app):
         if self in app.map.enemies:
@@ -250,6 +278,10 @@ class Enemy:
         return [(self.x, self.y), (self.x + self.width, self.y), (self.x, self.y - self.height), (self.x + self.width, self.y + self.height)]
 
     def followPlayer(self, app):
+
+        if(self.zapped):
+            return
+
         if(app.step % 30 == 0):
             if(self.canSee(app, app.player)):
                 self.visionBlocked = False
@@ -362,9 +394,15 @@ class Player:
     def __init__(self, x, y, width, height, sprite, speed=3):
         self.x = x
         self.y = y
+        self.dx = 0
+        self.dy = 0
         self.width = width
         self.height = height
         self.sprite = sprite
+        # self.sprites = sprites
+        # self.curSprite = openAnimation(sprites['idle'][0], sprites['idle'][1])
+        # self.spriteIndex = 0
+        # self.spriteRate = 5
         self.speed = speed
         self.health = 10
         self.isImmune = False
@@ -373,10 +411,12 @@ class Player:
         self.dashTimer = 0
 
     def draw(self, app):
-        drawImage(self.sprite, self.x - app.camX, self.y - app.camY)
+        # sprite = self.curSprite[app.step % len(self.curSprite)]
+        drawImage(f'./Sprites/{self.sprite}', self.x - app.camX, self.y - app.camY)
 
     def drawHealthBar(self, x, y, height):
-        drawRect(x, y, self.health*10, height, fill='red', borderWidth=4, border='black')
+        if(self.health >= 1):
+            drawRect(x, y, self.health*10, height, fill='red', borderWidth=4, border='black')
 
     def takeDamage(self, damage):
         if(not self.isImmune):
@@ -407,6 +447,16 @@ class Player:
                 self.isDashing = False
                 self.speed //= 2
 
+    def fireball(self, app):
+        app.map.projectiles.append(Fireball(self.x, self.y, self.dx*3, self.dy*3, Enemy))
+
+    def thunder(self, app):
+        for enemy in app.map.enemies:
+            if(distance(self.x, self.y, enemy.x, enemy.y) < 90):
+                enemy.takeDamage(app, 1)
+                enemy.zap()
+
+
     def move(self, app, keys):
         dx = 0
         dy = 0
@@ -418,6 +468,10 @@ class Player:
             dy += self.speed
         if('d' in keys):
             dx += self.speed
+        
+        if(not(dx == 0 and dy == 0)):
+            self.dx = dx
+            self.dy = dy
 
         self.x += dx
         app.camX += dx
@@ -459,9 +513,12 @@ class Projectile:
         self.dy = dy
         self.targetType = targetType
 
+    def __repr__(self):
+        return f'<Projectile at {(self.x, self.y)}>'
+
     def __eq__(self, other):
         if(isinstance(other, Projectile)):
-            return (self.x, self.y, self.radius) == (self.x, self.y, self.radius)
+            return (self.x, self.y, self.radius) == (other.x, other.y, other.radius)
         return False
     
     def draw(self, app):
@@ -490,10 +547,30 @@ class Projectile:
 
     def enemyCollide(self, app, enemy):
         enemy.takeDamage(app, 5)
+        self.destroy(app)
 
     def destroy(self, app):
-        if(self in app.map.projectiles):
-            app.map.projectiles.remove(self)
+        print("destroy Projectile")
+        index = listFind(app.map.projectiles, self)
+        if(index != -1):
+            print("Found Self")
+            print(self, app.map.projectiles[index])
+            app.map.projectiles.pop(index)
+
+class Fireball(Projectile):
+    def __init__(self, x, y, dx, dy, targetType):
+        super().__init__(x, y, dx, dy, targetType)
+        self.radius = 5
+
+    def enemyCollide(self, app, enemy):
+        enemy.takeDamage(app, 3)
+        for localEnemy in app.map.enemies:
+            if(distance(self.x, self.y, localEnemy.x, localEnemy.y) < 100):
+                localEnemy.takeDamage(app, 2)
+        self.destroy(app)
+
+    def draw(self, app):
+        drawCircle(self.x - app.camX, self.y-app.camY, self.radius, align='top-left', fill='red')
 
 def onAppStart(app):
 
@@ -502,7 +579,7 @@ def onAppStart(app):
     app.step = 0
     app.frameRate = 0
     app.startTime = time.time()
-    app.stepMode = True
+    app.paused = True
 
     app.audio = pyaudio.PyAudio()
     app.stream = app.audio.open(format=pyaudio.paInt16, channels=1, rate=44100, input=True, frames_per_buffer=1024)
@@ -529,7 +606,7 @@ def onAppStart(app):
     app.startingSpellCooldown = 0
 
     initializeMap(app)
-    app.player = Player(app.width/2 - 16, app.height/2 - 16, 32, 32, sprite='C:\CMU/Classes/15112/TermProject/Sprites/Mage-1.png', speed=3)
+    app.player = Player(app.width/2 - 16, app.height/2 - 16, 32, 32, sprite='Mage-1.png', speed=3)
 
 def initializeMap(app):
     app.map = map()
@@ -540,7 +617,6 @@ def initializeMap(app):
     app.map.addEnemy(Enemy(200, 200, 32, 32, sprite='', speed=2))
     app.map.addEnemy(Enemy(100, 100, 32, 32, sprite='', speed=2))
     app.map.addEnemy(Enemy(0, 0, 32, 32, sprite='', speed=2))
-    app.map.addProjectile(Projectile(app.width/2 - 16, app.height/2 - 16, -3, -3, Enemy))
 
 
 def onKeyPress(app, key):
@@ -553,10 +629,17 @@ def onKeyPress(app, key):
             app.readCommand = not app.readCommand
     elif(key == 'e'):
         app.player.interact(app)
-    elif(key == 'p'):
-        app.stepMode = not app.stepMode
+    elif(key == 'escape'):
+        app.paused = not app.paused
+
+# For debugging:
+
     elif(key == 'l'):
         takeStep(app)
+    elif(key == 'f'):
+        app.player.fireball(app)
+    elif(key == 't'):
+        app.player.thunder(app)
 
 def onKeyHold(app, keys):
     app.player.move(app, keys)
@@ -604,11 +687,11 @@ def drawCommand(app):
 
 
 def onStep(app):
-    if(not app.stepMode):
+    if(not app.paused):
         takeStep(app)
     if(app.step % app.stepsPerSecond == 0):
         curTime = time.time()
-        app.frameRate = int(30/(curTime-app.startTime))
+        app.frameRate = int(app.stepsPerSecond/(curTime-app.startTime))
         app.startTime = curTime
 
 
@@ -622,7 +705,9 @@ def takeStep(app):
     if(app.step % (app.stepsPerSecond//10) == 0):
         app.player.checkImmunity((app.stepsPerSecond // 10) / app.stepsPerSecond)
         app.player.trackDash((app.stepsPerSecond // 10) / app.stepsPerSecond)
+        app.map.trackEnemies((app.stepsPerSecond // 10) / app.stepsPerSecond)
         trackSpellCooldown(app, (app.stepsPerSecond // 10) / app.stepsPerSecond)
+
     
 
 def record(app):
