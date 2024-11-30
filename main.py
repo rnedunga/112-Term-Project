@@ -1,4 +1,5 @@
 import time
+import textwrap
 import asyncio
 from cmu_graphics import *
 from Sprites import *
@@ -33,6 +34,44 @@ def listFind(L, obj):
         return -1
     return index
 
+class Effect:
+    def __init__(self, spritesheet, x, y, radius=None, areaColor=None):
+        self.x = x
+        self.y = y
+        self.radius = radius
+        self.curSprite = openAnimation(spritesheet[0], spritesheet[1])
+        self.spriteIndex = 0
+        self.spriteRate = spritesheet[2]
+        self.spriteSize = (spritesheet[3], spritesheet[4])
+
+        self.areaColor = areaColor
+
+    def __eq__(self, other):
+        if(isinstance(other, Effect)):
+            return ((self.x, self.y) == (other.x, other.y) and self.curSprite == other.curSprite)
+        return False
+
+    def drawArea(self, app):
+        if(self.radius != None):
+            drawCircle(self.x - app.camX, self.y - app.camY, self.radius, border='black', opacity=40, fill=self.areaColor)
+
+    def draw(self,app):
+        pass
+        #drawImage(self.curSprite[self.spriteIndex], self.x - app.camX, self.y - app.camY, widht=self.spriteSize[0], height=self.spriteSize[1])
+
+    def updateAnimation(self, app):
+        if(self.spriteIndex >= len(self.curSprite)-1):
+            self.destroy(app)
+            return
+        rate = app.stepsPerSecond // self.spriteRate
+        if(app.step % rate == 0):
+            self.spriteIndex = (self.spriteIndex + 1) % len(self.curSprite)
+    
+    def destroy(self, app):
+        index = listFind(app.map.effects, self)
+        if(index != -1):
+            app.map.effects.pop(index)
+
 class map:
     def __init__(self, blockSize = app.width):
         self.blockSize = blockSize
@@ -41,6 +80,8 @@ class map:
         self.projectiles = []
         self.objectBlocks = dict()
         self.enemyBlocks = dict()
+        self.effects = []
+        self.messages = []
     
     def addObject(self, object):
         if(isinstance(object, MapObject)):
@@ -68,12 +109,21 @@ class map:
                     self.enemyBlocks[block] = self.enemyBlocks.get(block, set())
                     self.enemyBlocks[block].add(object)
 
+    def addEffect(self, effect):
+        if(isinstance(effect, Effect)):
+            self.effects.append(effect)
+
+    def addMessage(self, message):
+        if(isinstance(message, Message)):
+            self.messages.append(message)
+
+
     def addProjectile(self, projectile):
         self.projectiles.append(projectile)
 
     def moveProjectiles(self, app):
         for projectile in self.projectiles:
-            projectile.move()
+            projectile.move(app)
             for enemy in self.enemies:
                 projectile.checkCollision(app, enemy)
             blocks = self.getBlocks([(projectile.x, projectile.y), (projectile.x+(projectile.radius*2), projectile.y), (projectile.x, projectile.y+(projectile.radius)*2), (projectile.x+(projectile.radius*2), projectile.y+(projectile.radius*2))])
@@ -86,6 +136,7 @@ class map:
         for edge in edgeList:
             x,y = edge
             blockList.add(self.getBlock(x,y))
+        print(blockList)
         return blockList
             
     def getBlock(self, x, y):
@@ -117,19 +168,20 @@ class map:
                 return True
         return False
 
-    def checkInteraction(self, other, radius):
+    def checkInteraction(self, app, other, radius):
         blocks = self.getBlocks(other.getEdges())
         hasCollided = False
         for block in blocks:
             for object in self.objectBlocks.get(block, []):
                 for dx in {radius, -radius}:
                     if(object.checkCollision((other.x+dx, other.y, other.width, other.height))):
-                        object.interact(other)
-                        return True
+                        object.interact(app, other)
+                        return (True, object)
                 for dy in {radius, -radius}:
                     if(object.checkCollision((other.x, other.y+dy, other.width, other.height))):
-                        object.interact(other)
-                        return True
+                        object.interact(app, other)
+                        return (True, object)
+        return (False,)
                         
     def checkHit(self, other, radius):
         otherX, otherY, otherWidth, otherHeight = other
@@ -152,27 +204,54 @@ class map:
         for enemy in self.enemies:
             enemy.trackZap(secondsPassed)
 
+    def updateAnimations(self, app):
+        for enemy in self.enemies:
+            enemy.updateAnimation(app)
+        for effect in self.effects:
+            effect.updateAnimation(app)
+
+    def changeMessages(self, delta):
+        for message in self.messages:
+            if(message.display):
+                message.changeMessage(delta)
+
     def draw(self, app):
+
+        drawImage('./Sprites/map.png', -app.camX, -app.camY)
+
+        for effect in self.effects:
+            effect.drawArea(app)
+
         for obj in self.objects:
             obj.draw(app)
+
+        app.player.draw(app)
+
         for enemy in self.enemies:
             enemy.draw(app)
         for projectile in self.projectiles:
             projectile.draw(app)
+        for effect in self.effects:
+            effect.draw(app)
+        for message in self.messages:
+            message.draw()
 
 
 class MapObject:
-    def __init__(self, x, y, height = None, width = None, radius = None, color = None, shape = None):
-        self.color = 'black' if color == None else color
+    def __init__(self, x, y, height = None, width = None, radius = None, color = None, shape = None, sprite=None):
+        self.color = color
         self.x = x
         self.y = y
         self.radius = radius
         self.height = height
         self.width = width
+        if(sprite != None):
+            self.sprite = OBJECTSPRITES[sprite]
         if(radius != None):
             self.height = radius*2
             self.width = radius*2
         self.shape = shape
+        self.edges = self.getEdges()
 
     def __repr__(self):
         return f'<MapObject: {self.shape} at ({self.x}, {self.y})>'
@@ -182,11 +261,18 @@ class MapObject:
             drawCircle(self.x - app.camX, self.y - app.camY, self.radius, fill=self.color, align='top-left')
         elif(self.shape == 'rect'):
             drawRect(self.x - app.camX, self.y - app.camY, self.width, self.height, fill=self.color)
-        elif(self.shape == 'img'):
-            pass
+        elif(self.shape == 'image'):
+            drawImage(f'./Sprites/objects/{self.sprite}.png', self.x-app.camX, self.y-app.camY, width=self.width, height=self.height)
     
     def getEdges(self):
-        return [(self.x, self.y), (self.x + self.width, self.y), (self.x, self.y - self.height), (self.x + self.width, self.y + self.height)]
+        curList = [(self.x, self.y), (self.x + self.width, self.y), (self.x, self.y - self.height), (self.x + self.width, self.y + self.height)]
+        for pos in range(self.x, self.x+self.width, 32):
+            curList.extend([(pos, self.y), (pos, self.y+self.height)])
+        for pos in range(self.y, self.y+self.height, 32):
+            curList.extend([(self.x, pos), (self.x+self.width, pos)])
+        return curList
+        
+            
 
     def checkCollision(self, other):
         if(isinstance(other, tuple)):
@@ -208,27 +294,41 @@ class MapObject:
     def collide(self, other):
         pass
 
-    def interact(self, other):
+    def interact(self, app, other):
+        pass
+
+    def stopInteraction(self, app):
         pass
 
 class ReadableObject(MapObject):
-    def __init__(self, x, y, height = None, width = None, radius = None, color = None, shape = None, message=''):
-        super().__init__(x, y, height, width, radius, color, shape)
+    def __init__(self, x, y, height = None, width = None, radius = None, color = None, shape = None, sprite=None, message=['']):
+        super().__init__(x, y, height, width, radius, color, shape, sprite)
         self.message = message
 
-    def interact(self, other):
-        print(self.message)
+    def interact(self, app, other):
+        app.textBox.displayMessage(self.message)
+
+    def stopInteraction(self, app):
+        app.textBox.stopDisplay()
 
 class Enemy:
-    def __init__(self, x, y, width, height, sprite, speed=2):
+    def __init__(self, x, y, width, height, speed=2):
         self.x = x
         self.y = y
+        self.dx = 0
+        self.dy = 0
         self.width = width
         self.height = height
-        self.sprite = sprite
+        self.edges = self.getEdges()
+        self.sprites = ZOMBIESPRITES
+        self.curSprite = openAnimation(self.sprites['idle'][0], self.sprites['idle'][1])
+        self.curAnim = 'idle'
+        self.spriteIndex = 0
+        self.spriteRate = self.sprites['idle'][2]
         self.speed = speed
         self.visionLimit = 300
         self.visionBlocked = False
+        self.confused = False
         self.health = 4
 
         self.defaultColor = RGBZOMBIE
@@ -243,7 +343,40 @@ class Enemy:
         return False
 
     def draw(self, app):
-        drawRect(self.x - app.camX, self.y - app.camY, self.width, self.height, fill=rgb(*self.color))
+        sprite = 'zombie_idle-1'
+        if(0 <= self.spriteIndex < len(self.curSprite)):
+            sprite = self.curSprite[self.spriteIndex]
+        drawImage(f'./Sprites/{sprite[:-2]}/{sprite}.png', self.x - app.camX, self.y - app.camY, width=32, height=32)
+
+    def updateAnimation(self, app):
+        if(self.zapped):
+            return
+        rate = app.stepsPerSecond // self.spriteRate
+        if(app.step % rate == 0):
+            self.spriteIndex = (self.spriteIndex + 1) % len(self.curSprite)
+        
+        self.checkMovement()
+
+    def checkMovement(self):
+        if(self.dy > 0):
+            anim = 'forwards'
+        elif(self.dy < 0):
+            anim = 'backwards'
+        elif(self.dx > 0):
+            anim = 'right'
+        elif(self.dx < 0):
+            anim = 'left'
+        else:
+            anim = 'idle'
+        
+        if(anim != self.curAnim):
+            self.setAnimation(anim)
+        
+
+    def setAnimation(self, animation):
+        self.curAnim = animation
+        self.curSprite = openAnimation(self.sprites[animation][0], self.sprites[animation][1])
+        self.spriteRate =  self.sprites[animation][2]
 
     def dealDamage(self, other):
         other.takeDamage(1)
@@ -318,15 +451,20 @@ class Enemy:
         pass
         
     def move(self, app, dx, dy):
+
+        self.dx, self.dy = dx, dy
+
         self.x += dx
         if(not(dx == 0)):
             if(app.map.checkAllObjectCollision(self) or self.checkCollisionWithPlayer(app) or app.map.checkAllEnemiesCollision(self)):
                 self.x -= dx
+                self.dx = 0
 
         self.y += dy
         if(not(dy == 0)):
             if(app.map.checkAllObjectCollision(self) or self.checkCollisionWithPlayer(app) or app.map.checkAllEnemiesCollision(self)):
                 self.y -= dy
+                self.dy = 0
 
     def checkCollisionWithPlayer(self,app):
 
@@ -334,7 +472,9 @@ class Enemy:
             self.dealDamage(app.player)
 
     def canSee(self, app, other):
-        tileSize = 64
+        self.dx = 0
+        self.dy = 0
+        tileSize = 32
         selfX, selfY = self.x + self.width/2, self.y + self.height/2
         otherX, otherY = other.x + other.width/2, other.y + other.height/2
         distX = otherX - selfX
@@ -391,28 +531,47 @@ class Enemy:
             
 
 class Player:
-    def __init__(self, x, y, width, height, sprite, speed=3):
+    def __init__(self, x, y, width, height, sprites, speed=3):
         self.x = x
         self.y = y
         self.dx = 0
         self.dy = 0
+        self.trueDx = 0
+        self.trueDy = 0
         self.width = width
         self.height = height
-        self.sprite = sprite
-        # self.sprites = sprites
-        # self.curSprite = openAnimation(sprites['idle'][0], sprites['idle'][1])
-        # self.spriteIndex = 0
-        # self.spriteRate = 5
+        self.sprites = sprites
+        self.curSprite = openAnimation(sprites['idle'][0], sprites['idle'][1])
+        self.curAnim = 'idle'
+        self.spriteIndex = 0
+        self.spriteRate = sprites['idle'][2]
         self.speed = speed
         self.health = 10
         self.isImmune = False
         self.immunityTimer = 0
         self.isDashing = False
         self.dashTimer = 0
+        self.isInteracting = False
+        self.interactionObject = None
 
     def draw(self, app):
-        # sprite = self.curSprite[app.step % len(self.curSprite)]
-        drawImage(f'./Sprites/{self.sprite}', self.x - app.camX, self.y - app.camY)
+        sprite = 'wizard_idle-1'
+        if(0 <= self.spriteIndex < len(self.curSprite)):
+            sprite = self.curSprite[self.spriteIndex]
+        drawImage(f'./Sprites/{sprite[:-2]}/{sprite}.png', self.x - app.camX, self.y - app.camY)
+
+    def updateAnimation(self, app):
+        rate = app.stepsPerSecond // self.spriteRate
+        if(app.step % rate == 0):
+            self.spriteIndex = (self.spriteIndex + 1) % len(self.curSprite)
+        
+        self.checkMovement()
+
+    def setAnimation(self, animation):
+        self.curAnim = animation
+        self.curSprite = openAnimation(self.sprites[animation][0], self.sprites[animation][1])
+        self.spriteRate =  self.sprites[animation][2]
+
 
     def drawHealthBar(self, x, y, height):
         if(self.health >= 1):
@@ -455,7 +614,8 @@ class Player:
             if(distance(self.x, self.y, enemy.x, enemy.y) < 90):
                 enemy.takeDamage(app, 1)
                 enemy.zap()
-
+        
+        app.map.addEffect(Effect(('thunder', 6, 3, 64, 64), self.x, self.y, radius=90, areaColor=rgb(138, 138, 255)))
 
     def move(self, app, keys):
         dx = 0
@@ -468,6 +628,9 @@ class Player:
             dy += self.speed
         if('d' in keys):
             dx += self.speed
+
+        self.trueDx = dx
+        self.trueDy = dy
         
         if(not(dx == 0 and dy == 0)):
             self.dx = dx
@@ -488,9 +651,33 @@ class Player:
             if(app.map.checkAllObjectCollision(self)):
                 app.camY -= dy
                 self.y -= dy
+    
+    def checkMovement(self):
+        if(self.dy > 0):
+            anim = 'forwards'
+        elif(self.dy < 0):
+            anim = 'backwards'
+        elif(self.dx > 0):
+            anim = 'right'
+        elif(self.dx < 0):
+            anim = 'left'
+        else:
+            anim = 'idle'
+        
+        if(anim != self.curAnim):
+            self.setAnimation(anim)
 
     def interact(self, app):
-        app.map.checkInteraction(self, self.speed)
+        if(not self.isInteracting):
+            interaction = app.map.checkInteraction(app, self, self.speed)
+            if(interaction[0]):
+                self.isInteracting = True
+                self.interactionObject = interaction[1]
+        else:
+            self.interactionObject.stopInteraction(app)
+            self.interactionObject = None
+            self.isInteracting = False
+
 
     def __repr__(self):
         return f'<Player at {(self.x, self.y)}>'
@@ -524,9 +711,11 @@ class Projectile:
     def draw(self, app):
         drawCircle(self.x - app.camX, self.y-app.camY, self.radius, align='top-left', fill='black')
 
-    def move(self):
+    def move(self, app):
         self.x += self.dx
         self.y += self.dy
+        if(not ((-100 < self.x - app.camX < app.width + 100) and (-100 < self.y - app.camY < app.height + 100))):
+            self.destroy(app)
 
     def checkCollision(self, app, other):
 
@@ -550,11 +739,8 @@ class Projectile:
         self.destroy(app)
 
     def destroy(self, app):
-        print("destroy Projectile")
         index = listFind(app.map.projectiles, self)
         if(index != -1):
-            print("Found Self")
-            print(self, app.map.projectiles[index])
             app.map.projectiles.pop(index)
 
 class Fireball(Projectile):
@@ -564,13 +750,73 @@ class Fireball(Projectile):
 
     def enemyCollide(self, app, enemy):
         enemy.takeDamage(app, 3)
-        for localEnemy in app.map.enemies:
-            if(distance(self.x, self.y, localEnemy.x, localEnemy.y) < 100):
-                localEnemy.takeDamage(app, 2)
         self.destroy(app)
 
     def draw(self, app):
         drawCircle(self.x - app.camX, self.y-app.camY, self.radius, align='top-left', fill='red')
+
+    def destroy(self, app):
+        for localEnemy in app.map.enemies:
+            if(distance(self.x, self.y, localEnemy.x, localEnemy.y) < 50):
+                localEnemy.takeDamage(app, 2)
+        app.map.addEffect(Effect(('explosion', 6, 3, 30, 30), self.x, self.y, 50, areaColor=rgb(255, 138, 138)))
+        index = listFind(app.map.projectiles, self)
+        if(index != -1):
+            app.map.projectiles.pop(index)
+
+class Message:
+    def __init__(self, x, y, width, height, fontSize):
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+        self.messages = []
+        self.messageIndex = 0
+        self.lines = []
+        self.display = False
+        self.fontSize = fontSize
+
+    def displayMessage(self, messages):
+        self.display = True
+        self.messages = messages
+        self.messageIndex = 0
+        self.lines = self.findLines(messages[self.messageIndex])
+
+    def changeMessage(self, delta):
+        if(0 <= self.messageIndex+delta < len(self.messages)):
+            self.messageIndex += delta
+            self.lines = self.findLines(self.messages[self.messageIndex])
+
+    def stopDisplay(self):
+        self.display = False
+        self.message = ''
+        self.messageIndex = 0
+        self.lines = None
+    
+    def findLines(self, message):
+        lines = []
+        charsPerLine = int(self.width / 10)
+        pixels = self.x + len(message) * (self.fontSize/2.2)
+        lineCount = len(message) // charsPerLine
+        if(lineCount > 0):
+            charsPerLine = len(message) // lineCount
+        for i in range(lineCount):
+            lines.append(message[i*charsPerLine:(i+1)*charsPerLine])
+        lines.append(message[lineCount*charsPerLine:])
+        return lines
+    
+
+    def draw(self):
+        if(self.display):
+            drawRect(self.x - 10, self.y - 10, self.width, self.height, border='black', borderWidth=4, fill='white', opacity=90)
+            for i in range(len(self.lines)):
+                drawLabel(self.lines[i], self.x, i*20 + self.y, size=self.fontSize, align='top-left')
+            backText = ''
+            nextText = 'press "E"'
+            if(self.messageIndex > 0):backText = '<-- back'
+            if(self.messageIndex < len(self.messages)-1): nextText = 'next -->'
+            drawLabel(backText, self.x + 10, self.y + self.height - 30, align='top-left')
+            drawLabel(nextText, self.x + self.width - 70, self.y + self.height - 30, align='top-left')
 
 def onAppStart(app):
 
@@ -606,17 +852,18 @@ def onAppStart(app):
     app.startingSpellCooldown = 0
 
     initializeMap(app)
-    app.player = Player(app.width/2 - 16, app.height/2 - 16, 32, 32, sprite='Mage-1.png', speed=3)
+    app.player = Player(app.width/2 - 16, app.height/2 - 16, 32, 32, sprites=PLAYERSPRITES, speed=3)
 
 def initializeMap(app):
-    app.map = map()
+    app.map = map(blockSize=64)
     app.camX, app.camY = 0, 0
-    app.map.addObject(ReadableObject(0, 0, shape='rect', width=64, height=64, color='maroon', message="I'm a bookshelf!"))
+    app.map.addObject(ReadableObject(0, 0, shape='image', sprite='bookshelf', width=64, height=64, message=["I'm a bookshelf!", "(...)", "not much to it", "(...)", "go away bro"]))
     app.map.addObject(MapObject(50, 320, shape='circle', radius=20, color='purple'))
-    app.map.addEnemy(Enemy(300, 300, 32, 32, sprite='', speed=2))
-    app.map.addEnemy(Enemy(200, 200, 32, 32, sprite='', speed=2))
-    app.map.addEnemy(Enemy(100, 100, 32, 32, sprite='', speed=2))
-    app.map.addEnemy(Enemy(0, 0, 32, 32, sprite='', speed=2))
+    app.textBox = Message(20, 700, 500, 100, 16)
+    app.map.addMessage(app.textBox)
+    app.map.addEnemy(Enemy(400, 400, 32, 32))
+
+    app.map.addObject(MapObject(0, 0, shape='rect', width=11, height=960, color='red'))
 
 
 def onKeyPress(app, key):
@@ -631,34 +878,38 @@ def onKeyPress(app, key):
         app.player.interact(app)
     elif(key == 'escape'):
         app.paused = not app.paused
+    elif(key == 'right'):
+        app.map.changeMessages(1)
+    elif(key == 'left'):
+        app.map.changeMessages(-1)
 
 # For debugging:
 
     elif(key == 'l'):
         takeStep(app)
     elif(key == 'f'):
-        app.player.fireball(app)
+        cast(app, app.player, 'Fireball')
     elif(key == 't'):
-        app.player.thunder(app)
+        cast(app, app.player, 'Thunder')
 
 def onKeyHold(app, keys):
     app.player.move(app, keys)
 
 def redrawAll(app):
-    drawLabel('Press "R" to open and close mic (bottom right). red --> open',400, 20)
-    drawLabel(f'frame rate: {app.frameRate}', app.width - 80, 20)
+    app.map.draw(app)
+    drawUI(app)
+
+def drawUI(app):
+    drawLabel('Press "R" to open and close mic (bottom right). red --> open',400, 20, bold=True)
+    drawLabel(f'frame rate: {app.frameRate}', app.width - 80, 20, bold=True)
     micColor = 'gray'
     if(app.isRecording): micColor = 'red'
     drawCircle(750, 750, 5, fill=micColor)
-    app.map.draw(app)
-    app.player.draw(app)
-    #drawLabel(app.message, 200, 40, size = 20)
-    #drawLabel(app.frequency, 200, 240, size = 20)
     drawLabel(app.spell, 200, 300, size = 15)
     drawMeter(app)
     drawSpellCooldown(app, 50, 20, 100, 10)
     drawCommand(app)
-    app.player.drawHealthBar(600, 750, 20)
+    app.player.drawHealthBar(600, 750, 16)
 
 def drawMeter(app):
     drawRect(5,5,20,40,fill='green')
@@ -701,6 +952,8 @@ def takeStep(app):
     readCommand(app)
     app.map.enemiesFollowPlayer(app)
     app.map.moveProjectiles(app)
+    app.player.updateAnimation(app)
+    app.map.updateAnimations(app)
 
     if(app.step % (app.stepsPerSecond//10) == 0):
         app.player.checkImmunity((app.stepsPerSecond // 10) / app.stepsPerSecond)
