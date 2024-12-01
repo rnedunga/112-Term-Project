@@ -136,7 +136,6 @@ class map:
         for edge in edgeList:
             x,y = edge
             blockList.add(self.getBlock(x,y))
-        print(blockList)
         return blockList
             
     def getBlock(self, x, y):
@@ -258,8 +257,10 @@ class MapObject:
     
     def draw(self, app):
         if(self.shape == 'circle'):
+            if(self.color == None): return
             drawCircle(self.x - app.camX, self.y - app.camY, self.radius, fill=self.color, align='top-left')
         elif(self.shape == 'rect'):
+            if(self.color == None): return
             drawRect(self.x - app.camX, self.y - app.camY, self.width, self.height, fill=self.color)
         elif(self.shape == 'image'):
             drawImage(f'./Sprites/objects/{self.sprite}.png', self.x-app.camX, self.y-app.camY, width=self.width, height=self.height)
@@ -795,7 +796,7 @@ class Message:
     
     def findLines(self, message):
         lines = []
-        charsPerLine = int(self.width / 10)
+        charsPerLine = int(self.width/10)
         pixels = self.x + len(message) * (self.fontSize/2.2)
         lineCount = len(message) // charsPerLine
         if(lineCount > 0):
@@ -803,7 +804,7 @@ class Message:
         for i in range(lineCount):
             lines.append(message[i*charsPerLine:(i+1)*charsPerLine])
         lines.append(message[lineCount*charsPerLine:])
-        return lines
+        return textwrap.fill(message, 60).splitlines()
     
 
     def draw(self):
@@ -825,7 +826,7 @@ def onAppStart(app):
     app.step = 0
     app.frameRate = 0
     app.startTime = time.time()
-    app.paused = True
+    app.paused = False
 
     app.audio = pyaudio.PyAudio()
     app.stream = app.audio.open(format=pyaudio.paInt16, channels=1, rate=44100, input=True, frames_per_buffer=1024)
@@ -857,13 +858,76 @@ def onAppStart(app):
 def initializeMap(app):
     app.map = map(blockSize=64)
     app.camX, app.camY = 0, 0
-    app.map.addObject(ReadableObject(0, 0, shape='image', sprite='bookshelf', width=64, height=64, message=["I'm a bookshelf!", "(...)", "not much to it", "(...)", "go away bro"]))
-    app.map.addObject(MapObject(50, 320, shape='circle', radius=20, color='purple'))
     app.textBox = Message(20, 700, 500, 100, 16)
     app.map.addMessage(app.textBox)
     app.map.addEnemy(Enemy(400, 400, 32, 32))
 
+    #Four Walls
     app.map.addObject(MapObject(0, 0, shape='rect', width=11, height=960, color='red'))
+    app.map.addObject(MapObject(0, 896, shape='rect', width=960, height=64, color='red'))
+    app.map.addObject(MapObject(949, 0, shape='rect', width=11, height=960, color='red'))
+    app.map.addObject(MapObject(0, 0, shape='rect', width=960, height=64, color='red'))
+
+    #Dividing Walls
+    app.map.addObject(MapObject(276, 0, shape='rect', width=11, height=224, color='red'))
+    app.map.addObject(MapObject(0, 224, shape='rect', width=96, height=64, color='red'))
+    app.map.addObject(MapObject(160, 224, shape='rect', width=128, height=64, color='red'))
+    app.map.addObject(MapObject(0, 384, shape='rect', width=288, height=64, color='red'))
+    app.map.addObject(MapObject(256, 384, shape='rect', width=32, height=96, color='red'))
+    app.map.addObject(MapObject(256, 544, shape='rect', width=32, height=352, color='red'))
+    app.map.addObject(MapObject(608, 0, shape='rect', width=32, height=416, color='red'))
+    app.map.addObject(MapObject(608, 480, shape='rect', width=32, height=160, color='red'))
+    app.map.addObject(MapObject(288, 640, shape='rect', width=224, height=64, color='red'))
+    app.map.addObject(MapObject(576, 640, shape='rect', width=384, height=64, color='red'))
+
+    #Non-Interactible Furniture
+        #Bathroom
+    app.map.addObject(MapObject(332, 758, shape='rect',width=72, height=64, color='green'))
+        #Kitchen
+    app.map.addObject(MapObject(678, 128, shape='rect', height=64, width=86, color='green'))
+    app.map.addObject(MapObject(804, 128, shape='rect', height=64, width=86, color='green'))
+    app.map.addObject(MapObject(840, 378, shape='rect', height=100, width=120, color='green'))
+    app.map.addObject(MapObject(712, 506, shape='rect', height=100, width=148, color='green'))
+        #Room 2
+    app.map.addObject(MapObject(64, 510, shape='rect', height=32, width=64, color='green'))
+    app.map.addObject(MapObject(0, 608, shape='rect', height=50, width=32, color='green'))
+    app.map.addObject(MapObject(0, 672, shape='rect', height=50, width=32, color='green'))
+    app.map.addObject(MapObject(0, 736, shape='rect', height=50, width=32, color='green'))
+    app.map.addObject(MapObject(0, 800, shape='rect', height=50, width=32, color='green'))
+    app.map.addObject(MapObject(224, 608, shape='rect', height=50, width=32, color='green'))
+    app.map.addObject(MapObject(224, 672, shape='rect', height=50, width=32, color='green'))
+    app.map.addObject(MapObject(224, 736, shape='rect', height=50, width=32, color='green'))
+    app.map.addObject(MapObject(224, 800, shape='rect', height=50, width=32, color='green'))
+
+    #Bookshelves
+        #Room 1
+    app.map.addObject(ReadableObject(128,3,shape='rect',width=64,height=64,color='blue', message=['Heyyyyyy girl', 'How u doin ;)']))
+    app.map.addObject(ReadableObject(192,3,shape='rect',width=64,height=64,color='blue', message=['check you out', '*sexy whistle*']))
+        #Room 2
+    app.map.addObject(ReadableObject(192,398,shape='rect',width=64,height=53,color='blue', message=['check you out', '*sexy whistle*']))
+    app.map.addObject(ReadableObject(96,622,shape='rect',width=64,height=50,color='blue', message=['check you out', '*sexy whistle*']))
+    app.map.addObject(ReadableObject(96,750,shape='rect',width=64,height=50,color='blue', message=['check you out', '*sexy whistle*']))
+        #Bathroom
+    app.map.addObject(ReadableObject(672,664,shape='rect',width=64,height=45,color='blue', message=['check you out', '*sexy whistle*']))
+    app.map.addObject(ReadableObject(640,664,shape='rect',width=32,height=45,color='blue', message=['check you out', '*sexy whistle*']))
+    app.map.addObject(ReadableObject(736,664,shape='rect',width=32,height=45,color='blue', message=['check you out', '*sexy whistle*']))
+
+    #Interactible Furniture
+        #Bathroom
+    app.map.addObject(ReadableObject(781,664,shape='rect',width=40,height=47,color='blue', message=['check you out', '*sexy whistle*']))
+    app.map.addObject(ReadableObject(588,664,shape='rect',width=40,height=47,color='blue', message=['check you out', '*sexy whistle*']))
+        #Room 2
+    app.map.addObject(ReadableObject(64,404,shape='rect',width=64,height=47,color='blue', message=['check you out', '*sexy whistle*']))
+        #Room 1
+    app.map.addObject(ReadableObject(32, 40, shape='rect',width=96, height=56, color='blue',message=['Hey, it\'s a blue sofa with 2 blue pillows', 'It looks pretty comfy...']))
+    app.map.addObject(ReadableObject(32, 106, shape='rect',width=64, height=42, color='blue',message=['It\'s nice to have a place where to put coffee on.', 'There\'s no space though. Who the hell places two blue lamps next to each other?']))
+    app.map.addObject(ReadableObject(12, 148, shape='rect',width=32, height=60, color='blue',message=['Nice to have a bit of green in the house.']))
+    app.map.addObject(ReadableObject(224, 144, shape='rect',width=32, height=80, color='blue',message=['It\'s a blue and a red lamp...', 'Why does the owner of this house love to waste space with lamps?']))
+        #Kitchen
+    app.map.addObject(ReadableObject(709, 511, shape='rect', height=28, width=19, color='blue', message=['Dafuc']))
+    app.map.addObject(ReadableObject(840, 539, shape='rect', height=28, width=20, color='blue', message=['Dafuc']))
+    app.map.addObject(ReadableObject(838, 390, shape='rect', height=40, width=28, color='blue', message=['Whatsup food']))
+
 
 
 def onKeyPress(app, key):
@@ -893,6 +957,7 @@ def onKeyPress(app, key):
         cast(app, app.player, 'Thunder')
 
 def onKeyHold(app, keys):
+    pass
     app.player.move(app, keys)
 
 def redrawAll(app):
