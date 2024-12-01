@@ -37,8 +37,11 @@ def evaluatePitch(app, noteList):
         noteList.append(note)
     
     if(noteList[0] == noteList[1] == noteList[2]):
+        app.noteDetected = True
         print(f"Detected note: {noteList[0]} (Frequency: {app.frequency} Hz)")
         return noteList[0]
+    else:
+        app.noteDetected = False
 
     return None
 

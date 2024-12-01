@@ -14,6 +14,9 @@ from colors import *
 from spells import *
 from animations import *
 
+def empty_function():
+    pass
+
 def distance(x1, y1, x2, y2):
     return ((x1-x2)**2 + (y1-y2)**2)**0.5
 
@@ -41,8 +44,8 @@ class Effect:
         self.radius = radius
         self.curSprite = openAnimation(spritesheet[0], spritesheet[1])
         self.spriteIndex = 0
-        self.spriteRate = spritesheet[2]
-        self.spriteSize = (spritesheet[3], spritesheet[4])
+        self.spriteRate = None if(spritesheet == None) else spritesheet[2]
+        self.spriteSize = None if(spritesheet == None) else (spritesheet[3], spritesheet[4])
 
         self.areaColor = areaColor
 
@@ -56,10 +59,13 @@ class Effect:
             drawCircle(self.x - app.camX, self.y - app.camY, self.radius, border='black', opacity=40, fill=self.areaColor)
 
     def draw(self,app):
-        pass
-        #drawImage(self.curSprite[self.spriteIndex], self.x - app.camX, self.y - app.camY, widht=self.spriteSize[0], height=self.spriteSize[1])
+        if(self.curSprite[0][:-2] in EFFECTSPRITES):
+            stopIndex = self.curSprite[self.spriteIndex].find('-')
+            drawImage(f'./Sprites/{self.curSprite[self.spriteIndex][:stopIndex]}/{self.curSprite[self.spriteIndex]}.png', self.x - app.camX, self.y - app.camY, width=self.spriteSize[0], height=self.spriteSize[1], align='center')
 
     def updateAnimation(self, app):
+        if(self.curSprite == None):
+            return
         if(self.spriteIndex >= len(self.curSprite)-1):
             self.destroy(app)
             return
@@ -82,6 +88,7 @@ class map:
         self.enemyBlocks = dict()
         self.effects = []
         self.messages = []
+        self.spawners = []
     
     def addObject(self, object):
         if(isinstance(object, MapObject)):
@@ -98,6 +105,7 @@ class map:
 
     def addEnemy(self, enemy):
         if(isinstance(enemy, Enemy)):
+            enemy.setID(len(self.enemies))
             self.enemies.append(enemy)
             edges = enemy.getEdges()
             blocks = set()
@@ -108,6 +116,10 @@ class map:
                     blocks.add(block)
                     self.enemyBlocks[block] = self.enemyBlocks.get(block, set())
                     self.enemyBlocks[block].add(object)
+
+    def addSpawner(self, spawner):
+        if(isinstance(spawner, Spawner)):
+            self.spawners.append(spawner)
 
     def addEffect(self, effect):
         if(isinstance(effect, Effect)):
@@ -164,8 +176,8 @@ class map:
     def checkAllEnemiesCollision(self, other):
         for enemy in self.enemies:
             if(enemy.checkCollision(other)):
-                return True
-        return False
+                return enemy
+        return None
 
     def checkInteraction(self, app, other, radius):
         blocks = self.getBlocks(other.getEdges())
@@ -199,9 +211,14 @@ class map:
         for enemy in self.enemies:
             enemy.followPlayer(app)
     
-    def trackEnemies(self, secondsPassed):
+    def trackEnemies(self, app, secondsPassed):
         for enemy in self.enemies:
+            enemy.moveAwayFromEnemies(app)
             enemy.trackZap(secondsPassed)
+    
+    def runSpawners(self, app, secondsPassed):
+        for spawner in self.spawners:
+            spawner.runSpawner(app, secondsPassed)
 
     def updateAnimations(self, app):
         for enemy in self.enemies:
@@ -216,7 +233,7 @@ class map:
 
     def draw(self, app):
 
-        drawImage('./Sprites/map.png', -app.camX, -app.camY)
+        drawImage('./Sprites/map.png', -app.camX, -app.camY) #Credit for spritesheet used to make the map: https://limezu.itch.io/
 
         for effect in self.effects:
             effect.drawArea(app)
@@ -237,7 +254,7 @@ class map:
 
 
 class MapObject:
-    def __init__(self, x, y, height = None, width = None, radius = None, color = None, shape = None, sprite=None):
+    def __init__(self, x, y, height = None, width = None, radius = None, color = None, shape = None, sprite=None, interaction=empty_function):
         self.color = color
         self.x = x
         self.y = y
@@ -251,6 +268,7 @@ class MapObject:
             self.width = radius*2
         self.shape = shape
         self.edges = self.getEdges()
+        self.interaction = interaction
 
     def __repr__(self):
         return f'<MapObject: {self.shape} at ({self.x}, {self.y})>'
@@ -296,17 +314,18 @@ class MapObject:
         pass
 
     def interact(self, app, other):
-        pass
+        self.interaction()
 
     def stopInteraction(self, app):
         pass
 
 class ReadableObject(MapObject):
-    def __init__(self, x, y, height = None, width = None, radius = None, color = None, shape = None, sprite=None, message=['']):
-        super().__init__(x, y, height, width, radius, color, shape, sprite)
+    def __init__(self, x, y, height = None, width = None, radius = None, color = None, shape = None, sprite=None, interaction=empty_function, message=['']):
+        super().__init__(x, y, height, width, radius, color, shape, sprite, interaction)
         self.message = message
 
     def interact(self, app, other):
+        super().interact(app, other)
         app.textBox.displayMessage(self.message)
 
     def stopInteraction(self, app):
@@ -328,9 +347,10 @@ class Enemy:
         self.spriteRate = self.sprites['idle'][2]
         self.speed = speed
         self.visionLimit = 300
-        self.visionBlocked = False
+        self.visionBlocked = True
         self.confused = False
         self.health = 4
+        self.id = None
 
         self.defaultColor = RGBZOMBIE
         self.color = [self.defaultColor[0], self.defaultColor[1], self.defaultColor[2]]
@@ -338,9 +358,15 @@ class Enemy:
         self.zapped = False
         self.zapTimer = 0
 
+    def setID(self, id):
+        self.id = id
+
     def __eq__(self, other):
         if(isinstance(other, Enemy)):
-            return (self.x, self.y) == (other.x, other.y)
+            if(other.id == None or self.id == None):
+                print(f'Either {other} or {self} have no id.')
+                return False
+            return self.id == other.id
         return False
 
     def draw(self, app):
@@ -379,11 +405,12 @@ class Enemy:
         self.curSprite = openAnimation(self.sprites[animation][0], self.sprites[animation][1])
         self.spriteRate =  self.sprites[animation][2]
 
-    def dealDamage(self, other):
-        other.takeDamage(1)
+    def dealDamage(self, app, other):
+        other.takeDamage(app, 1)
     
     def takeDamage(self, app, damage):
         self.health -= damage
+        app.map.addEffect(Effect(('blood', 26, 30, 100, 100), self.x + self.width/2, self.y + self.height/2))
         if(self.health <= 0):
             self.death(app)
     
@@ -406,7 +433,7 @@ class Enemy:
         app.map.checkInteraction(self, self.speed)
 
     def __repr__(self):
-        return f'<Enemy at {(self.x, self.y)}>'
+        return f'<Enemy w/ id={self.id} at {(self.x, self.y)}>'
 
     def getEdges(self):
         return [(self.x, self.y), (self.x + self.width, self.y), (self.x, self.y - self.height), (self.x + self.width, self.y + self.height)]
@@ -439,12 +466,12 @@ class Enemy:
 
         withinXBounds = False
         for x in {otherX, otherX + otherWidth}:
-            if(self.x < x < self.x+self.width):
+            if(self.x <= x <= self.x+self.width):
                 withinXBounds = True
         if(not withinXBounds):
             return False
         for y in {otherY, otherY + otherHeight}:
-            if(self.y < y < self.y + self.height):
+            if(self.y <= y <= self.y + self.height):
                 self.collide(other)
                 return True
             
@@ -457,20 +484,43 @@ class Enemy:
 
         self.x += dx
         if(not(dx == 0)):
-            if(app.map.checkAllObjectCollision(self) or self.checkCollisionWithPlayer(app) or app.map.checkAllEnemiesCollision(self)):
+            if(app.map.checkAllObjectCollision(self) or self.checkCollisionWithPlayer(app)):
                 self.x -= dx
                 self.dx = 0
 
         self.y += dy
         if(not(dy == 0)):
-            if(app.map.checkAllObjectCollision(self) or self.checkCollisionWithPlayer(app) or app.map.checkAllEnemiesCollision(self)):
+            if(app.map.checkAllObjectCollision(self) or self.checkCollisionWithPlayer(app)):
                 self.y -= dy
                 self.dy = 0
+
+    def moveAwayFromEnemies(self, app):
+        collision = app.map.checkAllEnemiesCollision(self)
+        if(self.id == collision.id):
+            return
+        change = (0, 0)
+        speed = 1
+        if(collision != None):
+            if(self.x <= collision.x):
+                self.x -= speed
+                change = (change[0]-speed, change[1])
+            else:
+                self.x += speed
+                change = (change[0] + speed, change[1])
+            if(self.y <= collision.y):
+                self.y -= speed
+                change = (change[0], change[1] -speed)
+            else:
+                self.y += speed
+                change = (change[0], change[1] + speed)
+        if (app.map.checkAllObjectCollision(self) or self.checkCollisionWithPlayer(app)):
+            self.x -= change[0]
+            self.y -= change[0]
 
     def checkCollisionWithPlayer(self,app):
 
         if(self.checkCollision(app.player)):
-            self.dealDamage(app.player)
+            self.dealDamage(app, app.player)
 
     def canSee(self, app, other):
         self.dx = 0
@@ -547,8 +597,11 @@ class Player:
         self.spriteIndex = 0
         self.spriteRate = sprites['idle'][2]
         self.speed = speed
+
         self.health = 10
+        self.healthBarColor = 'red'
         self.isImmune = False
+
         self.immunityTimer = 0
         self.isDashing = False
         self.dashTimer = 0
@@ -576,24 +629,29 @@ class Player:
 
     def drawHealthBar(self, x, y, height):
         if(self.health >= 1):
-            drawRect(x, y, self.health*10, height, fill='red', borderWidth=4, border='black')
+            drawRect(x, y, self.health*10, height, fill=self.healthBarColor, borderWidth=4, border='black')
 
-    def takeDamage(self, damage):
+    def takeDamage(self, app, damage):
         if(not self.isImmune):
             if(self.health <= 0):
-                self.death()
+                self.death(app)
             else:
                 self.health -= damage
                 self.startImmunity()
 
     def startImmunity(self):
         self.isImmune = True
-        self.immunityTimer = 0
+        self.immunityTimer = 2
 
     def checkImmunity(self, secondsPassed):
-        self.immunityTimer += secondsPassed
-        if(self.immunityTimer >= 2):
+        self.immunityTimer -= secondsPassed
+        if(self.healthBarColor == 'red'):
+            self.healthBarColor = 'white'
+        else:
+            self.healthBarColor = 'red'
+        if(self.immunityTimer <= 0):
             self.isImmune = False
+            self.healthBarColor = 'red'
 
     def dash(self):
         self.speed *= 2
@@ -617,6 +675,9 @@ class Player:
                 enemy.zap()
         
         app.map.addEffect(Effect(('thunder', 6, 3, 64, 64), self.x, self.y, radius=90, areaColor=rgb(138, 138, 255)))
+
+    def heal(self, app):
+        self.health += 1
 
     def move(self, app, keys):
         dx = 0
@@ -689,8 +750,8 @@ class Player:
     def castSpell(self, app, spell):
         cast(app, self, spell)
 
-    def death(self):
-        print("Gameover")
+    def death(self, app):
+        app.gameover = True
 
 class Projectile:
     def __init__(self, x, y, dx, dy, targetType):
@@ -819,14 +880,39 @@ class Message:
             drawLabel(backText, self.x + 10, self.y + self.height - 30, align='top-left')
             drawLabel(nextText, self.x + self.width - 70, self.y + self.height - 30, align='top-left')
 
+class Spawner:
+    def __init__(self, x, y, spawnRate):
+        self.x = x
+        self.y = y
+        self.spawnRate=spawnRate
+        self.timer = 0
+
+    def spawn(self, app):
+        app.map.addEnemy(Enemy(self.x, self.y, 32, 32))
+
+    def runSpawner(self, app, secondsPassed):
+        self.timer += secondsPassed
+        if(self.timer >= self.spawnRate):
+            if(distance(app.player.x, app.player.y, self.x, self.y) < 256):
+                return
+            self.timer = 0
+            if len(app.map.enemies) < 10:
+                self.spawn(app)
+
+
 def onAppStart(app):
 
+    reset(app)
+
+def reset(app):
     app.width = 800
     app.height = 800
     app.step = 0
     app.frameRate = 0
     app.startTime = time.time()
     app.paused = False
+    app.gameover = False
+    app.gameoverTimer = 5
 
     app.audio = pyaudio.PyAudio()
     app.stream = app.audio.open(format=pyaudio.paInt16, channels=1, rate=44100, input=True, frames_per_buffer=1024)
@@ -834,6 +920,7 @@ def onAppStart(app):
     app.confidence_threshold = 2500  # Adjust this threshold based on testing
 
     app.isRecording = False
+    app.noteDetected = False
     app.message = 'Stopped'
     app.frequency = 0
     app.freqList = [0,0,0]
@@ -860,79 +947,80 @@ def initializeMap(app):
     app.camX, app.camY = 0, 0
     app.textBox = Message(20, 700, 500, 100, 16)
     app.map.addMessage(app.textBox)
-    app.map.addEnemy(Enemy(400, 400, 32, 32))
+    app.map.addSpawner(Spawner(400, 400, 5))
 
     #Four Walls
-    app.map.addObject(MapObject(0, 0, shape='rect', width=11, height=960, color='red'))
-    app.map.addObject(MapObject(0, 896, shape='rect', width=960, height=64, color='red'))
-    app.map.addObject(MapObject(949, 0, shape='rect', width=11, height=960, color='red'))
-    app.map.addObject(MapObject(0, 0, shape='rect', width=960, height=64, color='red'))
+    app.map.addObject(MapObject(0, 0, shape='rect', width=11, height=960))
+    app.map.addObject(MapObject(0, 896, shape='rect', width=960, height=64))
+    app.map.addObject(MapObject(949, 0, shape='rect', width=11, height=960))
+    app.map.addObject(MapObject(0, 0, shape='rect', width=960, height=64))
 
     #Dividing Walls
-    app.map.addObject(MapObject(276, 0, shape='rect', width=11, height=224, color='red'))
-    app.map.addObject(MapObject(0, 224, shape='rect', width=96, height=64, color='red'))
-    app.map.addObject(MapObject(160, 224, shape='rect', width=128, height=64, color='red'))
-    app.map.addObject(MapObject(0, 384, shape='rect', width=288, height=64, color='red'))
-    app.map.addObject(MapObject(256, 384, shape='rect', width=32, height=96, color='red'))
-    app.map.addObject(MapObject(256, 544, shape='rect', width=32, height=352, color='red'))
-    app.map.addObject(MapObject(608, 0, shape='rect', width=32, height=416, color='red'))
-    app.map.addObject(MapObject(608, 480, shape='rect', width=32, height=160, color='red'))
-    app.map.addObject(MapObject(288, 640, shape='rect', width=224, height=64, color='red'))
-    app.map.addObject(MapObject(576, 640, shape='rect', width=384, height=64, color='red'))
+    app.map.addObject(MapObject(276, 0, shape='rect', width=11, height=224))
+    app.map.addObject(MapObject(0, 224, shape='rect', width=96, height=64))
+    app.map.addObject(MapObject(160, 224, shape='rect', width=128, height=64))
+    app.map.addObject(MapObject(0, 384, shape='rect', width=288, height=64))
+    app.map.addObject(MapObject(256, 384, shape='rect', width=32, height=96))
+    app.map.addObject(MapObject(256, 544, shape='rect', width=32, height=352))
+    app.map.addObject(MapObject(608, 0, shape='rect', width=32, height=416))
+    app.map.addObject(MapObject(608, 480, shape='rect', width=32, height=160))
+    app.map.addObject(MapObject(288, 640, shape='rect', width=224, height=64))
+    app.map.addObject(MapObject(576, 640, shape='rect', width=384, height=64))
 
     #Non-Interactible Furniture
         #Bathroom
-    app.map.addObject(MapObject(332, 758, shape='rect',width=72, height=64, color='green'))
+    app.map.addObject(MapObject(332, 758, shape='rect',width=72, height=64))
         #Kitchen
-    app.map.addObject(MapObject(678, 128, shape='rect', height=64, width=86, color='green'))
-    app.map.addObject(MapObject(804, 128, shape='rect', height=64, width=86, color='green'))
-    app.map.addObject(MapObject(840, 378, shape='rect', height=100, width=120, color='green'))
-    app.map.addObject(MapObject(712, 506, shape='rect', height=100, width=148, color='green'))
+    app.map.addObject(MapObject(678, 128, shape='rect', height=64, width=86))
+    app.map.addObject(MapObject(804, 128, shape='rect', height=64, width=86))
+    app.map.addObject(MapObject(840, 378, shape='rect', height=100, width=120))
+    app.map.addObject(MapObject(712, 506, shape='rect', height=100, width=148))
         #Room 2
-    app.map.addObject(MapObject(64, 510, shape='rect', height=32, width=64, color='green'))
-    app.map.addObject(MapObject(0, 608, shape='rect', height=50, width=32, color='green'))
-    app.map.addObject(MapObject(0, 672, shape='rect', height=50, width=32, color='green'))
-    app.map.addObject(MapObject(0, 736, shape='rect', height=50, width=32, color='green'))
-    app.map.addObject(MapObject(0, 800, shape='rect', height=50, width=32, color='green'))
-    app.map.addObject(MapObject(224, 608, shape='rect', height=50, width=32, color='green'))
-    app.map.addObject(MapObject(224, 672, shape='rect', height=50, width=32, color='green'))
-    app.map.addObject(MapObject(224, 736, shape='rect', height=50, width=32, color='green'))
-    app.map.addObject(MapObject(224, 800, shape='rect', height=50, width=32, color='green'))
+    app.map.addObject(MapObject(64, 510, shape='rect', height=32, width=64))
+    app.map.addObject(MapObject(0, 608, shape='rect', height=50, width=32))
+    app.map.addObject(MapObject(0, 672, shape='rect', height=50, width=32))
+    app.map.addObject(MapObject(0, 736, shape='rect', height=50, width=32))
+    app.map.addObject(MapObject(0, 800, shape='rect', height=50, width=32))
+    app.map.addObject(MapObject(224, 608, shape='rect', height=50, width=32))
+    app.map.addObject(MapObject(224, 672, shape='rect', height=50, width=32))
+    app.map.addObject(MapObject(224, 736, shape='rect', height=50, width=32))
+    app.map.addObject(MapObject(224, 800, shape='rect', height=50, width=32))
 
     #Bookshelves
         #Room 1
-    app.map.addObject(ReadableObject(128,3,shape='rect',width=64,height=64,color='blue', message=['Heyyyyyy girl', 'How u doin ;)']))
-    app.map.addObject(ReadableObject(192,3,shape='rect',width=64,height=64,color='blue', message=['check you out', '*sexy whistle*']))
+    app.map.addObject(ReadableObject(128,3,shape='rect',width=64,height=64, interaction=unlockDash, message=['Heyyyyyy girl', 'How u doin ;)']))
+    app.map.addObject(ReadableObject(192,3,shape='rect',width=64,height=64, message=['check you out', '*sexy whistle*']))
         #Room 2
-    app.map.addObject(ReadableObject(192,398,shape='rect',width=64,height=53,color='blue', message=['check you out', '*sexy whistle*']))
-    app.map.addObject(ReadableObject(96,622,shape='rect',width=64,height=50,color='blue', message=['check you out', '*sexy whistle*']))
-    app.map.addObject(ReadableObject(96,750,shape='rect',width=64,height=50,color='blue', message=['check you out', '*sexy whistle*']))
+    app.map.addObject(ReadableObject(192,398,shape='rect',width=64,height=53, message=['check you out', '*sexy whistle*']))
+    app.map.addObject(ReadableObject(96,622,shape='rect',width=64,height=50, message=['check you out', '*sexy whistle*']))
+    app.map.addObject(ReadableObject(96,750,shape='rect',width=64,height=50, message=['check you out', '*sexy whistle*']))
         #Bathroom
-    app.map.addObject(ReadableObject(672,664,shape='rect',width=64,height=45,color='blue', message=['check you out', '*sexy whistle*']))
-    app.map.addObject(ReadableObject(640,664,shape='rect',width=32,height=45,color='blue', message=['check you out', '*sexy whistle*']))
-    app.map.addObject(ReadableObject(736,664,shape='rect',width=32,height=45,color='blue', message=['check you out', '*sexy whistle*']))
+    app.map.addObject(ReadableObject(672,664,shape='rect',width=64,height=45, message=['check you out', '*sexy whistle*']))
+    app.map.addObject(ReadableObject(640,664,shape='rect',width=32,height=45, interaction=unlockFireball, message=['check you out', '*sexy whistle*']))
+    app.map.addObject(ReadableObject(736,664,shape='rect',width=32,height=45, message=['check you out', '*sexy whistle*']))
 
     #Interactible Furniture
         #Bathroom
-    app.map.addObject(ReadableObject(781,664,shape='rect',width=40,height=47,color='blue', message=['check you out', '*sexy whistle*']))
-    app.map.addObject(ReadableObject(588,664,shape='rect',width=40,height=47,color='blue', message=['check you out', '*sexy whistle*']))
+    app.map.addObject(ReadableObject(781,664,shape='rect',width=40,height=47, message=['check you out', '*sexy whistle*']))
+    app.map.addObject(ReadableObject(588,664,shape='rect',width=40,height=47, message=['check you out', '*sexy whistle*']))
         #Room 2
-    app.map.addObject(ReadableObject(64,404,shape='rect',width=64,height=47,color='blue', message=['check you out', '*sexy whistle*']))
+    app.map.addObject(ReadableObject(64,404,shape='rect',width=64,height=47, interaction=unlockHeal, message=['*TV Host starts talking', 'Very blue skies here in Pitt', 'I\'ve been told that this time of year, one green ball is all you need to heal yourself']))
         #Room 1
-    app.map.addObject(ReadableObject(32, 40, shape='rect',width=96, height=56, color='blue',message=['Hey, it\'s a blue sofa with 2 blue pillows', 'It looks pretty comfy...']))
-    app.map.addObject(ReadableObject(32, 106, shape='rect',width=64, height=42, color='blue',message=['It\'s nice to have a place where to put coffee on.', 'There\'s no space though. Who the hell places two blue lamps next to each other?']))
-    app.map.addObject(ReadableObject(12, 148, shape='rect',width=32, height=60, color='blue',message=['Nice to have a bit of green in the house.']))
-    app.map.addObject(ReadableObject(224, 144, shape='rect',width=32, height=80, color='blue',message=['It\'s a blue and a red lamp...', 'Why does the owner of this house love to waste space with lamps?']))
+    app.map.addObject(ReadableObject(32, 40, shape='rect',width=96, height=56,message=['Hey, it\'s a blue sofa with 2 blue pillows', 'It looks pretty comfy...']))
+    app.map.addObject(ReadableObject(32, 106, shape='rect',width=64, height=42,message=['It\'s nice to have a place where to put coffee on.', 'There\'s no space though. Who the hell places two blue lamps next to each other?']))
+    app.map.addObject(ReadableObject(12, 148, shape='rect',width=32, height=60,message=['Nice to have a bit of green in the house.']))
+    app.map.addObject(ReadableObject(224, 144, shape='rect',width=32, height=80,message=['It\'s a blue and a red lamp...', 'Why does the owner of this house love to waste space with lamps?']))
         #Kitchen
-    app.map.addObject(ReadableObject(709, 511, shape='rect', height=28, width=19, color='blue', message=['Dafuc']))
-    app.map.addObject(ReadableObject(840, 539, shape='rect', height=28, width=20, color='blue', message=['Dafuc']))
-    app.map.addObject(ReadableObject(838, 390, shape='rect', height=40, width=28, color='blue', message=['Whatsup food']))
+    app.map.addObject(ReadableObject(709, 511, shape='rect', height=28, width=19, interaction=unlockThunder, message=['Dafuc']))
+    app.map.addObject(ReadableObject(840, 539, shape='rect', height=28, width=22, message=['Dafuc']))
+    app.map.addObject(ReadableObject(838, 390, shape='rect', height=40, width=28, message=['Whatsup food']))
 
 
 
 def onKeyPress(app, key):
     if(key == 'r'):
         app.isRecording = not app.isRecording
+        app.noteDetected = False
     elif(key == 'c'):
         if(app.spellCooldown <= 0):
             if(app.readCommand):
@@ -944,37 +1032,37 @@ def onKeyPress(app, key):
         app.paused = not app.paused
     elif(key == 'right'):
         app.map.changeMessages(1)
+        app.color = 'red' 
     elif(key == 'left'):
         app.map.changeMessages(-1)
-
-# For debugging:
-
-    elif(key == 'l'):
-        takeStep(app)
-    elif(key == 'f'):
-        cast(app, app.player, 'Fireball')
-    elif(key == 't'):
-        cast(app, app.player, 'Thunder')
+        app.color = 'green'
+    elif(key == 'up' or key == 'down'):
+        app.color = 'blue'   
 
 def onKeyHold(app, keys):
-    pass
     app.player.move(app, keys)
 
 def redrawAll(app):
     app.map.draw(app)
     drawUI(app)
+    if(app.gameover):
+        drawGameOver(app)
 
 def drawUI(app):
     drawLabel('Press "R" to open and close mic (bottom right). red --> open',400, 20, bold=True)
     drawLabel(f'frame rate: {app.frameRate}', app.width - 80, 20, bold=True)
     micColor = 'gray'
     if(app.isRecording): micColor = 'red'
-    drawCircle(750, 750, 5, fill=micColor)
+    detectionColor=rgb(255, 100, 100)
+    if(app.noteDetected):
+        detectionColor='green'
+    drawCircle(app.width-50, app.height-50, 5, fill=micColor)
+    drawCircle(app.width-30, app.height-50, 5, fill=detectionColor)
     drawLabel(app.spell, 200, 300, size = 15)
     drawMeter(app)
     drawSpellCooldown(app, 50, 20, 100, 10)
     drawCommand(app)
-    app.player.drawHealthBar(600, 750, 16)
+    app.player.drawHealthBar(app.width-200, app.height - 50, 16)
 
 def drawMeter(app):
     drawRect(5,5,20,40,fill='green')
@@ -1001,15 +1089,23 @@ def drawCommand(app):
         drawCircle(curXPos, 300, 10, fill=command)
         curXPos += 8
 
+def drawGameOver(app):
+    drawRect(app.width/2, app.height/2, app.width - 80, app.height - 80, opacity=90, border='black', borderWidth=5, fill='white', align='center')
+    drawLabel('GAME OVER', app.width/2, 70, fill='red', size=30, bold=True)
+    drawLabel(f'Game will restart in {int(app.gameoverTimer)} seconds', app.width/2, app.height/2, size=20)
+
 
 def onStep(app):
+    if(app.gameover):
+        app.gameoverTimer -= 1/app.stepsPerSecond
+        if(app.gameoverTimer < 0):
+            reset(app)
     if(not app.paused):
         takeStep(app)
     if(app.step % app.stepsPerSecond == 0):
         curTime = time.time()
         app.frameRate = int(app.stepsPerSecond/(curTime-app.startTime))
         app.startTime = curTime
-
 
 def takeStep(app):
     app.step += 1
@@ -1023,7 +1119,8 @@ def takeStep(app):
     if(app.step % (app.stepsPerSecond//10) == 0):
         app.player.checkImmunity((app.stepsPerSecond // 10) / app.stepsPerSecond)
         app.player.trackDash((app.stepsPerSecond // 10) / app.stepsPerSecond)
-        app.map.trackEnemies((app.stepsPerSecond // 10) / app.stepsPerSecond)
+        app.map.trackEnemies(app, (app.stepsPerSecond // 10) / app.stepsPerSecond)
+        app.map.runSpawners(app, (app.stepsPerSecond // 10) / app.stepsPerSecond)
         trackSpellCooldown(app, (app.stepsPerSecond // 10) / app.stepsPerSecond)
 
     

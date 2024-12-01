@@ -6,6 +6,8 @@ ZOMBIESPRITES = {'idle':('zombie_idle', 2, 2), 'forwards':('zombie_run_forwards'
 
 OBJECTSPRITES = {'bookshelf': 'bookshelf'}
 
+EFFECTSPRITES = {'blood': 'blood'}
+
 def openAnimation(name, frames):
     L = []
     for frame in range(1, frames+1):

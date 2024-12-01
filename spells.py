@@ -1,5 +1,21 @@
-SPELLS = {'Dash':['blue'], 'Fireball':['red', 'green', 'red'], 'Thunder':['blue', 'red']}
-SPELLCOOLDOWNS = {'Dash': 1, 'Fireball':3, 'Thunder':5}
+SPELLS = dict()
+SPELLCOOLDOWNS = dict()
+
+def unlockDash():
+    SPELLS['Dash'] = ['blue']
+    SPELLCOOLDOWNS['Dash'] = 1
+
+def unlockFireball():
+    SPELLS['Fireball'] = ['red', 'green', 'red']
+    SPELLCOOLDOWNS['Fireball'] = 3
+
+def unlockThunder():
+    SPELLS['Thunder'] = ['blue', 'red']
+    SPELLCOOLDOWNS['Thunder'] = 5
+
+def unlockHeal():
+    SPELLS['Heal'] = ['green']
+    SPELLCOOLDOWNS['Heal'] = 2
 
 def evaluateCommand(app):
     foundSpell = 'Spell not found'
@@ -37,6 +53,11 @@ def trackSpellCooldown(app, secondsPassed):
 
 
 def cast(app, player, spell):
+
+    if(not spell in SPELLS):
+        print("NOT FOUND")
+        return
+
     if(app.spellCooldown > 0):
         return
     
@@ -48,8 +69,12 @@ def cast(app, player, spell):
         player.dash()
     
     elif(spell == 'Fireball'):
+        print("FIREBALL!!!", SPELLS)
         player.fireball(app)
     
     elif(spell == 'Thunder'):
         player.thunder(app)
+
+    elif(spell == 'Heal'):
+        player.heal(app)
         
