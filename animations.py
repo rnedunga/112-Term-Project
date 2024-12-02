@@ -6,7 +6,7 @@ ZOMBIESPRITES = {'idle':('zombie_idle', 2, 2), 'forwards':('zombie_run_forwards'
 
 OBJECTSPRITES = {'bookshelf': 'bookshelf'}
 
-EFFECTSPRITES = {'blood': 'blood'}
+EFFECTSPRITES = {'blood': 'blood'} #Credits: blood - https://xyezawr.itch.io/gif-free-pixel-effects-pack-5-blood-effects
 
 def openAnimation(name, frames):
     L = []

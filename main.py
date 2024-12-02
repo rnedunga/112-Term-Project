@@ -4,6 +4,7 @@ import asyncio
 from cmu_graphics import *
 from Sprites import *
 from PIL import Image
+import random
 
 import pyaudio
 import numpy as np
@@ -14,7 +15,18 @@ from colors import *
 from spells import *
 from animations import *
 
-def empty_function():
+INSTRUCTIONS = ['Pay attention to these instructions.', 
+                'Your objective as of right now is to discover all the color combinations for the spells around this apartment', 
+                'You can do so by interacting with objects in this environment, which will give you clues as to what those color combinations are',
+                'Pressing "E" on your keyboard will allow you to interact with these objects',
+                'Use WASD to move around the map with your player',
+                'You can give color commands with your voice. The higher your voice goes, the further up in the color meter it will go (top left corner of screen)',
+                'It is recommended to sing in falsetto and around the note G4 to get more accurate voice detections',
+                'If you are having difficulties with the voice detection, use the arrow keys to give your color input',
+                'To begin recording your input, press "C", and to finish giving color input, press "C" again.',
+                'Good Luck!']
+
+def empty_function(app=None, a=None, b=None, c=None):
     pass
 
 def distance(x1, y1, x2, y2):
@@ -314,7 +326,7 @@ class MapObject:
         pass
 
     def interact(self, app, other):
-        self.interaction()
+        self.interaction(app)
 
     def stopInteraction(self, app):
         pass
@@ -575,11 +587,7 @@ class Enemy:
                 if app.map.checkHit((curCheck[0], curCheck[1], 1, 1), 1):
                     return False
         else:
-            return False
-                    
-
-
-            
+            return False        
 
 class Player:
     def __init__(self, x, y, width, height, sprites, speed=3):
@@ -666,18 +674,19 @@ class Player:
                 self.speed //= 2
 
     def fireball(self, app):
-        app.map.projectiles.append(Fireball(self.x, self.y, self.dx*3, self.dy*3, Enemy))
+        app.map.projectiles.append(Fireball(self.x + self.width/2, self.y + self.height/2, self.dx*3, self.dy*3, Enemy))
 
     def thunder(self, app):
         for enemy in app.map.enemies:
             if(distance(self.x, self.y, enemy.x, enemy.y) < 90):
-                enemy.takeDamage(app, 1)
+                enemy.takeDamage(app, 3)
                 enemy.zap()
         
-        app.map.addEffect(Effect(('thunder', 6, 3, 64, 64), self.x, self.y, radius=90, areaColor=rgb(138, 138, 255)))
+        app.map.addEffect(Effect(('thunder', 6, 3, 64, 64), self.x + self.width/2, self.y + self.height/2, radius=90, areaColor=rgb(138, 138, 255)))
 
     def heal(self, app):
-        self.health += 1
+        if(self.health < 10):
+            self.health += 1
 
     def move(self, app, keys):
         dx = 0
@@ -751,7 +760,7 @@ class Player:
         cast(app, self, spell)
 
     def death(self, app):
-        app.gameover = True
+        gameover(app)
 
 class Projectile:
     def __init__(self, x, y, dx, dy, targetType):
@@ -811,7 +820,7 @@ class Fireball(Projectile):
         self.radius = 5
 
     def enemyCollide(self, app, enemy):
-        enemy.takeDamage(app, 3)
+        enemy.takeDamage(app, 5)
         self.destroy(app)
 
     def draw(self, app):
@@ -819,8 +828,9 @@ class Fireball(Projectile):
 
     def destroy(self, app):
         for localEnemy in app.map.enemies:
-            if(distance(self.x, self.y, localEnemy.x, localEnemy.y) < 50):
-                localEnemy.takeDamage(app, 2)
+            dist = distance(self.x, self.y, localEnemy.x, localEnemy.y)
+            if(dist < 50):
+                localEnemy.takeDamage(app, int((1 - (dist/50))*5))
         app.map.addEffect(Effect(('explosion', 6, 3, 30, 30), self.x, self.y, 50, areaColor=rgb(255, 138, 138)))
         index = listFind(app.map.projectiles, self)
         if(index != -1):
@@ -888,21 +898,58 @@ class Spawner:
         self.timer = 0
 
     def spawn(self, app):
+        print('spawn')
         app.map.addEnemy(Enemy(self.x, self.y, 32, 32))
 
     def runSpawner(self, app, secondsPassed):
         self.timer += secondsPassed
         if(self.timer >= self.spawnRate):
-            if(distance(app.player.x, app.player.y, self.x, self.y) < 256):
+            print('checkingSpawn')
+            if(distance(app.player.x, app.player.y, self.x, self.y) < 160):
+                print('distance too small')
                 return
             self.timer = 0
             if len(app.map.enemies) < 10:
                 self.spawn(app)
 
+def gameover(app):
+    app.gameover = True
+    app.paused = True
 
 def onAppStart(app):
-
+    app.onStartScreen = True
+    app.learnMode = False
+    app.waveMode = False
+    app.wave = 1
+    app.waveTimer = 0
     reset(app)
+    app.enemyPoints = [(160, 160), (128, 192), (32, 320), (96, 320), (160, 320),
+                       (320, 96), (416, 96), (512, 96), (320, 160), (416, 160), (512, 160),
+                       (320, 224), (416, 224), (512, 224), (320, 288), (416, 288), (512, 288),
+                       (320, 416), (416, 416), (512, 416), (320, 544), (416, 544), (512, 544),
+                       (48, 576), (176, 576), (48, 672), (176, 672), (48, 768), (176, 768),
+                       (448, 768), (512, 768), (576, 768), (640, 768), (704, 768), 
+                       (672, 224), (768, 224), (864, 224), (672, 288), (768, 288), (864, 288), 
+                       (672, 352), (768, 352)]
+
+def startLearnMode(app):
+    app.onStartScreen = False
+    app.waveMode = False
+    app.learnMode = True
+    initializeLearnMode(app)
+
+def startWaveMode(app):
+    app.onStartScreen = False
+    app.learnMode = False
+    app.waveMode = True
+    app.wave = 1
+    app.waveTimer = 30
+    initializeWaveMode(app)
+
+def goToStartScreen(app):
+    app.onStartScreen = True
+    app.learnMode = False
+    app.waveMode = False
 
 def reset(app):
     app.width = 800
@@ -913,6 +960,12 @@ def reset(app):
     app.paused = False
     app.gameover = False
     app.gameoverTimer = 5
+
+    app.SPELLS = dict()
+    app.SPELLCOOLDOWNS = dict()
+    if(app.waveMode):
+        app.SPELLS = {'Heal':['green'], 'Fireball':['red', 'green', 'red'], 'Thunder':['blue', 'red'], 'Dash':['blue']}
+        app.SPELLCOOLDOWNS = {'Heal':2, 'Fireball':3, 'Thunder':5, 'Dash':1}
 
     app.audio = pyaudio.PyAudio()
     app.stream = app.audio.open(format=pyaudio.paInt16, channels=1, rate=44100, input=True, frames_per_buffer=1024)
@@ -928,7 +981,7 @@ def reset(app):
     app.prevNote = 'C0'
     app.note = 'C0'
 
-    app.color = 'black'
+    app.color = 'green'
 
     app.readCommand = False
     app.prevCommand = None
@@ -942,12 +995,45 @@ def reset(app):
     initializeMap(app)
     app.player = Player(app.width/2 - 16, app.height/2 - 16, 32, 32, sprites=PLAYERSPRITES, speed=3)
 
+def setWave(app, wave):
+    amountOfEnemies = wave*4
+    app.waveTimer = 30*wave
+    if(amountOfEnemies > 15): amountOfEnemies = 15
+    for enemyIndex in range(amountOfEnemies):
+        index = len(app.enemyPoints)
+        while(index >= len(app.enemyPoints)):
+            index = int(random.random()*len(app.enemyPoints))
+        x, y = app.enemyPoints[index]
+        app.map.addEnemy(Enemy(x,y,32, 32))
+
+    if(wave > 4):
+        for enemyIndex in range(wave-4):
+            index = len(app.enemyPoints)
+            while(index >= len(app.enemyPoints)):
+                index = int(random.random()*len(app.enemyPoints))
+            x, y = app.enemyPoints[index]
+            spawnRate = 10 + (wave-4)*2
+            if spawnRate > 60:
+                spawnRate = 60
+            print('add spaner')
+            app.map.addSpawner(Spawner(x,y,spawnRate))
+
+def checkWaveMode(app, secondsPassed):
+    if(len(app.map.enemies) <= 0):
+        app.wave += 1
+        setWave(app, app.wave)
+    app.waveTimer -= secondsPassed
+    if(app.waveTimer <= 0):
+        gameover(app)
+
 def initializeMap(app):
     app.map = map(blockSize=64)
     app.camX, app.camY = 0, 0
     app.textBox = Message(20, 700, 500, 100, 16)
     app.map.addMessage(app.textBox)
-    app.map.addSpawner(Spawner(400, 400, 5))
+    app.instructions = Message(100, 100, 600, 400, 16)
+    app.map.addMessage(app.instructions)
+    #app.instructions.displayMessage(INSTRUCTIONS)
 
     #Four Walls
     app.map.addObject(MapObject(0, 0, shape='rect', width=11, height=960))
@@ -988,21 +1074,21 @@ def initializeMap(app):
 
     #Bookshelves
         #Room 1
-    app.map.addObject(ReadableObject(128,3,shape='rect',width=64,height=64, interaction=unlockDash, message=['Heyyyyyy girl', 'How u doin ;)']))
-    app.map.addObject(ReadableObject(192,3,shape='rect',width=64,height=64, message=['check you out', '*sexy whistle*']))
+    app.map.addObject(ReadableObject(128,3,shape='rect',width=64,height=64, interaction=unlockDash, message=['Hey, here\'s an interesting book!','*Reading Secret of Dash*', 'You know, sometimes the answer lies in the very room you are in.', 'Look at all the colors in the room and find the most frequent color', 'The answer is simply 1 ball of that color']))
+    app.map.addObject(ReadableObject(192,3,shape='rect',width=64,height=64, message=['Huh, nothing interesting around here']))
         #Room 2
-    app.map.addObject(ReadableObject(192,398,shape='rect',width=64,height=53, message=['check you out', '*sexy whistle*']))
-    app.map.addObject(ReadableObject(96,622,shape='rect',width=64,height=50, message=['check you out', '*sexy whistle*']))
-    app.map.addObject(ReadableObject(96,750,shape='rect',width=64,height=50, message=['check you out', '*sexy whistle*']))
+    app.map.addObject(ReadableObject(192,398,shape='rect',width=64,height=53, message=['Aaaand done.', 'I read every single book in this bookshelf.', '(...)', 'This is sad.']))
+    app.map.addObject(ReadableObject(96,622,shape='rect',width=64,height=50, message=['Hey, here\'s something interesting.', '*Reading The Lost Secret*', 'Are you in search of a secret? Huh? Are you?', 'Here\'s one: TV Contains more knowledge than books. It\'s a fact!',]))
+    app.map.addObject(ReadableObject(96,750,shape='rect',width=64,height=50, message=['Hmmmmm... nothing interesting here.']))
         #Bathroom
-    app.map.addObject(ReadableObject(672,664,shape='rect',width=64,height=45, message=['check you out', '*sexy whistle*']))
-    app.map.addObject(ReadableObject(640,664,shape='rect',width=32,height=45, interaction=unlockFireball, message=['check you out', '*sexy whistle*']))
-    app.map.addObject(ReadableObject(736,664,shape='rect',width=32,height=45, message=['check you out', '*sexy whistle*']))
+    app.map.addObject(ReadableObject(672,664,shape='rect',width=64,height=45, message=['placeholder']))
+    app.map.addObject(ReadableObject(640,664,shape='rect',width=32,height=45, message=['placeholder']))
+    app.map.addObject(ReadableObject(736,664,shape='rect',width=32,height=45, message=['placeholder']))
 
     #Interactible Furniture
         #Bathroom
-    app.map.addObject(ReadableObject(781,664,shape='rect',width=40,height=47, message=['check you out', '*sexy whistle*']))
-    app.map.addObject(ReadableObject(588,664,shape='rect',width=40,height=47, message=['check you out', '*sexy whistle*']))
+    app.map.addObject(ReadableObject(781,664,shape='rect',width=40,height=47, message=['placeholder']))
+    app.map.addObject(ReadableObject(588,664,shape='rect',width=40,height=47, interaction=unlockFireball, message=['Oooooh', 'Hey, I look pretty good!', 'Is there anything else in this world as good looking as I am?', 'Mirror - "The paintings in the batroom look much better than you."', 'Did that mirror just talk?', 'Might as well check the paintings then.']))
         #Room 2
     app.map.addObject(ReadableObject(64,404,shape='rect',width=64,height=47, interaction=unlockHeal, message=['*TV Host starts talking', 'Very blue skies here in Pitt', 'I\'ve been told that this time of year, one green ball is all you need to heal yourself']))
         #Room 1
@@ -1011,14 +1097,33 @@ def initializeMap(app):
     app.map.addObject(ReadableObject(12, 148, shape='rect',width=32, height=60,message=['Nice to have a bit of green in the house.']))
     app.map.addObject(ReadableObject(224, 144, shape='rect',width=32, height=80,message=['It\'s a blue and a red lamp...', 'Why does the owner of this house love to waste space with lamps?']))
         #Kitchen
-    app.map.addObject(ReadableObject(709, 511, shape='rect', height=28, width=19, interaction=unlockThunder, message=['Dafuc']))
-    app.map.addObject(ReadableObject(840, 539, shape='rect', height=28, width=22, message=['Dafuc']))
-    app.map.addObject(ReadableObject(838, 390, shape='rect', height=40, width=28, message=['Whatsup food']))
+    app.map.addObject(ReadableObject(709, 511, shape='rect', height=28, width=19, interaction=unlockThunder, message=['Hey, looks like a couple was drinking here...', 'It\'s wierd they have two dinner tables only for a couple.', 'Maybe the tables are a clue!']))
+    app.map.addObject(ReadableObject(840, 539, shape='rect', height=28, width=22, message=['Huh, another glass']))
+    app.map.addObject(ReadableObject(838, 390, shape='rect', height=40, width=28, message=['Hmmmmmmmmmmm, I want that in my mouth right now!', 'Oh right, I don\'t have a mouth...']))
 
+def initializeLearnMode(app):
+    reset(app)
+    app.map.addSpawner(Spawner(400, 400, 5))
 
+def initializeWaveMode(app):
+    app.wave = 1
+    reset(app)
+    setWave(app, app.wave)
 
 def onKeyPress(app, key):
-    if(key == 'r'):
+    if(key == 'escape'):
+        app.paused = not app.paused
+    if(key == 'left'):
+        app.map.changeMessages(-1)
+    if(key == 'right'):
+        app.map.changeMessages(1)
+
+#Functions that don't run when app is paused
+    if(app.paused):
+        pass
+    elif(key == 'e'):
+        app.player.interact(app)
+    elif(key == 'r'):
         app.isRecording = not app.isRecording
         app.noteDetected = False
     elif(key == 'c'):
@@ -1026,27 +1131,56 @@ def onKeyPress(app, key):
             if(app.readCommand):
                 evaluateCommand(app)
             app.readCommand = not app.readCommand
-    elif(key == 'e'):
-        app.player.interact(app)
-    elif(key == 'escape'):
-        app.paused = not app.paused
     elif(key == 'right'):
-        app.map.changeMessages(1)
         app.color = 'red' 
     elif(key == 'left'):
-        app.map.changeMessages(-1)
         app.color = 'green'
     elif(key == 'up' or key == 'down'):
         app.color = 'blue'   
 
 def onKeyHold(app, keys):
+    if(app.paused):
+        return
     app.player.move(app, keys)
 
+def onMousePress(app, mouseX, mouseY):
+    if(app.onStartScreen):
+        if((app.width/2 - 200 < mouseX < app.width/2 + 200) and (375 < mouseY < 425)):
+            startLearnMode(app)
+        elif((app.width/2 - 200 < mouseX < app.width/2 + 200) and (475 < mouseY < 525)):
+            startWaveMode(app)
+    elif(app.gameover):
+        if((app.width/2 - 200 < mouseX < app.width/2 + 200) and (375 < mouseY < 425)):
+            if(app.waveMode): initializeWaveMode(app)
+            elif(app.learnMode): initializeLearnMode(app)
+        elif((app.width/2 - 200 < mouseX < app.width/2 + 200) and (475 < mouseY < 525)):
+            goToStartScreen(app)
+
+    print(32*(mouseX//32), 32*(mouseY//32))
+
 def redrawAll(app):
-    app.map.draw(app)
-    drawUI(app)
-    if(app.gameover):
-        drawGameOver(app)
+    if(app.onStartScreen):
+        drawStartScreen(app)
+    else:
+        app.map.draw(app)
+        drawUI(app)
+        if(app.waveMode):
+            drawWaveTimer(app)
+        if(app.gameover):
+            drawGameOver(app)
+        elif(app.paused):
+            drawPauseScreen(app)
+
+def drawWaveTimer(app):
+    drawLabel(f'{int(app.waveTimer)}', 50, app.height - 50, size=20)
+
+def drawStartScreen(app):
+    drawLabel('Cast Your Heart Out!', app.width/2, 50, size=30, bold=True)
+    drawRect(app.width/2, 400, 300, 50, fill='white', border='black', borderWidth=4, align = 'center')
+    drawLabel('Learn', app.width/2, 400, align = 'center', size=20)
+    drawRect(app.width/2, 500, 300, 50, fill='white', border='black', borderWidth=4, align = 'center')
+    drawLabel('Wave Mode', app.width/2, 500, align = 'center', size=20)
+
 
 def drawUI(app):
     drawLabel('Press "R" to open and close mic (bottom right). red --> open',400, 20, bold=True)
@@ -1091,15 +1225,25 @@ def drawCommand(app):
 
 def drawGameOver(app):
     drawRect(app.width/2, app.height/2, app.width - 80, app.height - 80, opacity=90, border='black', borderWidth=5, fill='white', align='center')
-    drawLabel('GAME OVER', app.width/2, 70, fill='red', size=30, bold=True)
-    drawLabel(f'Game will restart in {int(app.gameoverTimer)} seconds', app.width/2, app.height/2, size=20)
+    drawLabel('GAME OVER', 200, 70, fill='red', size=30, bold=True)
+    drawRect(app.width/2, 400, 300, 50, fill='white', border='black', borderWidth=4, align = 'center')
+    drawLabel('Restart', app.width/2, 400, align = 'center', size=20)
+    drawRect(app.width/2, 500, 300, 50, fill='white', border='black', borderWidth=4, align = 'center')
+    drawLabel('Start Screen', app.width/2, 500, align = 'center', size=20)
+    # drawLabel(f'Game will restart in {int(app.gameoverTimer)} seconds', app.width/2, app.height/2, size=20)
 
+def drawPauseScreen(app):
+    drawRect(app.width/2, app.height/2, app.width - 200, 100, opacity=90, border='black', borderWidth=5, fill='white', align='center')
+    drawLabel('Pause', app.width/2, app.height/2 - 10, size=30, bold=True)
+    drawLabel('Press "Esc" to return', app.width/2, app.height/2 + 30)
 
 def onStep(app):
-    if(app.gameover):
-        app.gameoverTimer -= 1/app.stepsPerSecond
-        if(app.gameoverTimer < 0):
-            reset(app)
+    if(app.onStartScreen):
+        return
+    # if(app.gameover):
+    #     app.gameoverTimer -= 1/app.stepsPerSecond
+    #     if(app.gameoverTimer < 0):
+    #         reset(app)
     if(not app.paused):
         takeStep(app)
     if(app.step % app.stepsPerSecond == 0):
@@ -1117,13 +1261,13 @@ def takeStep(app):
     app.map.updateAnimations(app)
 
     if(app.step % (app.stepsPerSecond//10) == 0):
+        if(app.waveMode):
+            checkWaveMode(app, (app.stepsPerSecond // 10) / app.stepsPerSecond)
         app.player.checkImmunity((app.stepsPerSecond // 10) / app.stepsPerSecond)
         app.player.trackDash((app.stepsPerSecond // 10) / app.stepsPerSecond)
         app.map.trackEnemies(app, (app.stepsPerSecond // 10) / app.stepsPerSecond)
         app.map.runSpawners(app, (app.stepsPerSecond // 10) / app.stepsPerSecond)
         trackSpellCooldown(app, (app.stepsPerSecond // 10) / app.stepsPerSecond)
-
-    
 
 def record(app):
     if(app.isRecording): 

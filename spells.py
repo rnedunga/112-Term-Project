@@ -1,26 +1,23 @@
-SPELLS = dict()
-SPELLCOOLDOWNS = dict()
+def unlockDash(app):
+    app.SPELLS['Dash'] = ['blue']
+    app.SPELLCOOLDOWNS['Dash'] = 1
 
-def unlockDash():
-    SPELLS['Dash'] = ['blue']
-    SPELLCOOLDOWNS['Dash'] = 1
+def unlockFireball(app):
+    app.SPELLS['Fireball'] = ['red', 'green', 'red']
+    app.SPELLCOOLDOWNS['Fireball'] = 3
 
-def unlockFireball():
-    SPELLS['Fireball'] = ['red', 'green', 'red']
-    SPELLCOOLDOWNS['Fireball'] = 3
+def unlockThunder(app):
+    app.SPELLS['Thunder'] = ['blue', 'red']
+    app.SPELLCOOLDOWNS['Thunder'] = 5
 
-def unlockThunder():
-    SPELLS['Thunder'] = ['blue', 'red']
-    SPELLCOOLDOWNS['Thunder'] = 5
-
-def unlockHeal():
-    SPELLS['Heal'] = ['green']
-    SPELLCOOLDOWNS['Heal'] = 2
+def unlockHeal(app):
+    app.SPELLS['Heal'] = ['green']
+    app.SPELLCOOLDOWNS['Heal'] = 2
 
 def evaluateCommand(app):
     foundSpell = 'Spell not found'
-    for spell in SPELLS:
-        if(SPELLS[spell] == app.command):
+    for spell in app.SPELLS:
+        if(app.SPELLS[spell] == app.command):
             foundSpell = spell
             app.player.castSpell(app, spell)
             break
@@ -54,7 +51,7 @@ def trackSpellCooldown(app, secondsPassed):
 
 def cast(app, player, spell):
 
-    if(not spell in SPELLS):
+    if(not spell in app.SPELLS):
         print("NOT FOUND")
         return
 
@@ -62,14 +59,14 @@ def cast(app, player, spell):
         return
     
     app.spell = spell
-    app.spellCooldown = SPELLCOOLDOWNS[spell]
+    app.spellCooldown = app.SPELLCOOLDOWNS[spell]
     app.startingSpellCooldown = app.spellCooldown
 
     if(spell == 'Dash'):
         player.dash()
     
     elif(spell == 'Fireball'):
-        print("FIREBALL!!!", SPELLS)
+        print("FIREBALL!!!", app.SPELLS)
         player.fireball(app)
     
     elif(spell == 'Thunder'):
