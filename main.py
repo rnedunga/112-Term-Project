@@ -15,15 +15,20 @@ from colors import *
 from spells import *
 from animations import *
 
-INSTRUCTIONS = ['Pay attention to these instructions.', 
+INSTRUCTIONS = ['Pay attention to these instructions. Press right arrow key to move to next. To skip (not recommended), press "E".', 
                 'Your objective as of right now is to discover all the color combinations for the spells around this apartment', 
                 'You can do so by interacting with objects in this environment, which will give you clues as to what those color combinations are',
                 'Pressing "E" on your keyboard will allow you to interact with these objects',
-                'Use WASD to move around the map with your player',
-                'You can give color commands with your voice. The higher your voice goes, the further up in the color meter it will go (top left corner of screen)',
-                'It is recommended to sing in falsetto and around the note G4 to get more accurate voice detections',
-                'If you are having difficulties with the voice detection, use the arrow keys to give your color input',
-                'To begin recording your input, press "C", and to finish giving color input, press "C" again.',
+                'Interacting with the right objects will give you access to specific spells (but right now you don\'t have access to any)',
+                'To cast spells, you must record a specific combination of colors',
+                'To begin recording your color input, press "C", and to finish giving color input, press "C" again. If that combination corresponds to a spell, it will be cast.',
+                'After pressing "C" to record, you must switch between colors to record a specific color combination. In pressing "C" once more, the combination recorded will be evaluated.',
+                'You can switch between colors with your voice. The higher your voice goes, the further up in the color meter it will go (top left corner of screen) and vice versa.',
+                'It is recommended to sing in falsetto and around the note G4 and above to get more accurate voice detections',
+                'To open/close microphone, press "R". Try it',
+                'There are two circles on the bottom right of the screen. The left circle shows if mic is open/closed (red/gray). The one on the right shows if a note was detected (green if yes, red if no)', 
+                'If you are having difficulties with the voice detection, close your microphone and use the arrow keys to give your color input (more info in controls screen)',
+                'For more information about controls, press "esc" to pause and access controls screen.',
                 'Good Luck!']
 
 def empty_function(app=None, a=None, b=None, c=None):
@@ -637,15 +642,17 @@ class Player:
 
     def drawHealthBar(self, x, y, height):
         if(self.health >= 1):
-            drawRect(x, y, self.health*10, height, fill=self.healthBarColor, borderWidth=4, border='black')
+            drawRect(x, y, 100, height, fill='white')
+            drawRect(x, y, self.health*10, height, fill=self.healthBarColor)
+            drawRect(x, y, 100, height, fill=None, border='black', borderWidth=4)
+
 
     def takeDamage(self, app, damage):
         if(not self.isImmune):
-            if(self.health <= 0):
-                self.death(app)
-            else:
-                self.health -= damage
-                self.startImmunity()
+            self.health -= damage
+            self.startImmunity()
+        if(self.health <= 0):
+            self.death(app)
 
     def startImmunity(self):
         self.isImmune = True
@@ -676,19 +683,23 @@ class Player:
     def fireball(self, app):
         app.map.projectiles.append(Fireball(self.x + self.width/2, self.y + self.height/2, self.dx*3, self.dy*3, Enemy))
 
-    def thunder(self, app):
+    def freeze(self, app):
         for enemy in app.map.enemies:
-            if(distance(self.x, self.y, enemy.x, enemy.y) < 90):
-                enemy.takeDamage(app, 3)
+            if(distance(self.x, self.y, enemy.x + enemy.width/2, enemy.y + enemy.height/2) < 90):
+                enemy.takeDamage(app, 2)
                 enemy.zap()
         
-        app.map.addEffect(Effect(('thunder', 6, 3, 64, 64), self.x + self.width/2, self.y + self.height/2, radius=90, areaColor=rgb(138, 138, 255)))
+        app.map.addEffect(Effect(('freeze', 6, 3, 64, 64), self.x + self.width/2, self.y + self.height/2, radius=90, areaColor=rgb(138, 138, 255)))
 
     def heal(self, app):
         if(self.health < 10):
             self.health += 1
 
     def move(self, app, keys):
+
+        if(app.textBox.display):
+            return
+
         dx = 0
         dy = 0
         if('w' in keys):
@@ -783,6 +794,7 @@ class Projectile:
         drawCircle(self.x - app.camX, self.y-app.camY, self.radius, align='top-left', fill='black')
 
     def move(self, app):
+
         self.x += self.dx
         self.y += self.dy
         if(not ((-100 < self.x - app.camX < app.width + 100) and (-100 < self.y - app.camY < app.height + 100))):
@@ -828,9 +840,11 @@ class Fireball(Projectile):
 
     def destroy(self, app):
         for localEnemy in app.map.enemies:
-            dist = distance(self.x, self.y, localEnemy.x, localEnemy.y)
-            if(dist < 50):
-                localEnemy.takeDamage(app, int((1 - (dist/50))*5))
+            dist = distance(self.x, self.y, localEnemy.x + localEnemy.width/2, localEnemy.y + localEnemy.height/2)
+            if(dist < 30):
+                localEnemy.takeDamage(app, 5)
+            elif(dist < 50):
+                localEnemy.takeDamage(app, 3)
         app.map.addEffect(Effect(('explosion', 6, 3, 30, 30), self.x, self.y, 50, areaColor=rgb(255, 138, 138)))
         index = listFind(app.map.projectiles, self)
         if(index != -1):
@@ -891,11 +905,12 @@ class Message:
             drawLabel(nextText, self.x + self.width - 70, self.y + self.height - 30, align='top-left')
 
 class Spawner:
-    def __init__(self, x, y, spawnRate):
+    def __init__(self, x, y, spawnRate, maxSpawn):
         self.x = x
         self.y = y
         self.spawnRate=spawnRate
         self.timer = 0
+        self.maxSpawn = maxSpawn
 
     def spawn(self, app):
         print('spawn')
@@ -909,7 +924,7 @@ class Spawner:
                 print('distance too small')
                 return
             self.timer = 0
-            if len(app.map.enemies) < 10:
+            if len(app.map.enemies) < self.maxSpawn:
                 self.spawn(app)
 
 def gameover(app):
@@ -918,6 +933,8 @@ def gameover(app):
 
 def onAppStart(app):
     app.onStartScreen = True
+    app.onControlsScreen = False
+    app.onSpellsScreen = False
     app.learnMode = False
     app.waveMode = False
     app.wave = 1
@@ -937,19 +954,26 @@ def startLearnMode(app):
     app.waveMode = False
     app.learnMode = True
     initializeLearnMode(app)
+    app.textBox.displayMessage(INSTRUCTIONS)
 
 def startWaveMode(app):
     app.onStartScreen = False
     app.learnMode = False
     app.waveMode = True
     app.wave = 1
-    app.waveTimer = 30
+    app.waveTimer = 0
     initializeWaveMode(app)
 
 def goToStartScreen(app):
     app.onStartScreen = True
     app.learnMode = False
     app.waveMode = False
+
+def goToControlsScreen(app):
+    app.onControlsScreen = True
+
+def goToSpellsScreen(app):
+    app.onSpellsScreen = True
 
 def reset(app):
     app.width = 800
@@ -964,8 +988,10 @@ def reset(app):
     app.SPELLS = dict()
     app.SPELLCOOLDOWNS = dict()
     if(app.waveMode):
-        app.SPELLS = {'Heal':['green'], 'Fireball':['red', 'green', 'red'], 'Thunder':['blue', 'red'], 'Dash':['blue']}
-        app.SPELLCOOLDOWNS = {'Heal':2, 'Fireball':3, 'Thunder':5, 'Dash':1}
+        unlockDash(app)
+        unlockFireball(app)
+        unlockFreeze(app)
+        unlockHeal(app)
 
     app.audio = pyaudio.PyAudio()
     app.stream = app.audio.open(format=pyaudio.paInt16, channels=1, rate=44100, input=True, frames_per_buffer=1024)
@@ -996,8 +1022,11 @@ def reset(app):
     app.player = Player(app.width/2 - 16, app.height/2 - 16, 32, 32, sprites=PLAYERSPRITES, speed=3)
 
 def setWave(app, wave):
+    app.wave = wave
     amountOfEnemies = wave*4
-    app.waveTimer = 30*wave
+    if(app.wave == 1): app.waveTimer = 60
+    else: app.waveTimer += 30 + (app.wave-1)*15
+
     if(amountOfEnemies > 15): amountOfEnemies = 15
     for enemyIndex in range(amountOfEnemies):
         index = len(app.enemyPoints)
@@ -1015,13 +1044,12 @@ def setWave(app, wave):
             spawnRate = 10 + (wave-4)*2
             if spawnRate > 60:
                 spawnRate = 60
-            print('add spaner')
-            app.map.addSpawner(Spawner(x,y,spawnRate))
+            maxSpawn = 10 + (app.wave-4)*4
+            app.map.addSpawner(Spawner(x,y,spawnRate, maxSpawn))
 
 def checkWaveMode(app, secondsPassed):
     if(len(app.map.enemies) <= 0):
-        app.wave += 1
-        setWave(app, app.wave)
+        setWave(app, app.wave+1)
     app.waveTimer -= secondsPassed
     if(app.waveTimer <= 0):
         gameover(app)
@@ -1097,22 +1125,23 @@ def initializeMap(app):
     app.map.addObject(ReadableObject(12, 148, shape='rect',width=32, height=60,message=['Nice to have a bit of green in the house.']))
     app.map.addObject(ReadableObject(224, 144, shape='rect',width=32, height=80,message=['It\'s a blue and a red lamp...', 'Why does the owner of this house love to waste space with lamps?']))
         #Kitchen
-    app.map.addObject(ReadableObject(709, 511, shape='rect', height=28, width=19, interaction=unlockThunder, message=['Hey, looks like a couple was drinking here...', 'It\'s wierd they have two dinner tables only for a couple.', 'Maybe the tables are a clue!']))
+    app.map.addObject(ReadableObject(709, 511, shape='rect', height=28, width=19, interaction=unlockFreeze, message=['Hey, looks like a couple was drinking here...', 'It\'s wierd they have two dinner tables only for a couple.', 'Maybe the tables are a clue!']))
     app.map.addObject(ReadableObject(840, 539, shape='rect', height=28, width=22, message=['Huh, another glass']))
     app.map.addObject(ReadableObject(838, 390, shape='rect', height=40, width=28, message=['Hmmmmmmmmmmm, I want that in my mouth right now!', 'Oh right, I don\'t have a mouth...']))
 
 def initializeLearnMode(app):
     reset(app)
-    app.map.addSpawner(Spawner(400, 400, 5))
+    app.map.addSpawner(Spawner(400, 64, 10, 2))
 
 def initializeWaveMode(app):
-    app.wave = 1
     reset(app)
-    setWave(app, app.wave)
+    setWave(app, 1)
 
 def onKeyPress(app, key):
     if(key == 'escape'):
         app.paused = not app.paused
+        app.onSpellsScreen = False
+        app.onControlsScreen = False
     if(key == 'left'):
         app.map.changeMessages(-1)
     if(key == 'right'):
@@ -1123,6 +1152,7 @@ def onKeyPress(app, key):
         pass
     elif(key == 'e'):
         app.player.interact(app)
+        if(not app.player.isInteracting): app.textBox.stopDisplay()
     elif(key == 'r'):
         app.isRecording = not app.isRecording
         app.noteDetected = False
@@ -1136,7 +1166,11 @@ def onKeyPress(app, key):
     elif(key == 'left'):
         app.color = 'green'
     elif(key == 'up' or key == 'down'):
-        app.color = 'blue'   
+        app.color = 'blue'
+
+#DEBUG KEYPRESS:
+    elif(key.isdigit() and app.waveMode):
+        setWave(app, int(key))
 
 def onKeyHold(app, keys):
     if(app.paused):
@@ -1144,42 +1178,73 @@ def onKeyHold(app, keys):
     app.player.move(app, keys)
 
 def onMousePress(app, mouseX, mouseY):
-    if(app.onStartScreen):
+    if(app.onControlsScreen or app.onSpellsScreen):
+        if(0 < mouseX < 200 and 730 < mouseY < 800):
+            app.onControlsScreen = False
+            app.onSpellsScreen = False
+    elif(app.onStartScreen):
         if((app.width/2 - 200 < mouseX < app.width/2 + 200) and (375 < mouseY < 425)):
             startLearnMode(app)
         elif((app.width/2 - 200 < mouseX < app.width/2 + 200) and (475 < mouseY < 525)):
             startWaveMode(app)
-    elif(app.gameover):
+        elif((app.width/2 - 200 < mouseX < app.width/2 + 200) and (575 < mouseY < 625)):
+            goToControlsScreen(app)
+    elif(app.gameover or app.paused):
         if((app.width/2 - 200 < mouseX < app.width/2 + 200) and (375 < mouseY < 425)):
             if(app.waveMode): initializeWaveMode(app)
             elif(app.learnMode): initializeLearnMode(app)
         elif((app.width/2 - 200 < mouseX < app.width/2 + 200) and (475 < mouseY < 525)):
             goToStartScreen(app)
+        elif((app.width/2 - 200 < mouseX < app.width/2 + 200) and (575 < mouseY < 625)):
+            goToControlsScreen(app)
+        elif(app.paused and app.waveMode and ((app.width/2 - 200 < mouseX < app.width/2 + 200) and (675 < mouseY < 725))):
+            goToSpellsScreen(app)
 
     print(32*(mouseX//32), 32*(mouseY//32))
 
 def redrawAll(app):
     if(app.onStartScreen):
-        drawStartScreen(app)
+        if(app.onControlsScreen): drawControls(app)
+        else: drawStartScreen(app)
     else:
         app.map.draw(app)
         drawUI(app)
         if(app.waveMode):
-            drawWaveTimer(app)
+            drawWaveMode(app)
         if(app.gameover):
             drawGameOver(app)
+        elif (app.onControlsScreen):
+            drawControls(app)
+        elif (app.onSpellsScreen):
+            drawSpellsScreen(app)
         elif(app.paused):
             drawPauseScreen(app)
 
-def drawWaveTimer(app):
-    drawLabel(f'{int(app.waveTimer)}', 50, app.height - 50, size=20)
+def drawWaveMode(app):
+    drawLabel(f'Time\'s running out: {int(app.waveTimer)}', 100, app.height - 50, size=20)
+    drawLabel(f'Wave: {app.wave}', app.width/2, 70, size = 30)
 
 def drawStartScreen(app):
-    drawLabel('Cast Your Heart Out!', app.width/2, 50, size=30, bold=True)
-    drawRect(app.width/2, 400, 300, 50, fill='white', border='black', borderWidth=4, align = 'center')
-    drawLabel('Learn', app.width/2, 400, align = 'center', size=20)
-    drawRect(app.width/2, 500, 300, 50, fill='white', border='black', borderWidth=4, align = 'center')
-    drawLabel('Wave Mode', app.width/2, 500, align = 'center', size=20)
+    drawImage('./Sprites/UI/Title.png', app.width/2, 150, align='center')
+    drawImage('./Sprites/UI/learnMode.png',app.width/2 - 150, 375)
+    drawImage('./Sprites/UI/waveMode.png',app.width/2-150, 475)
+    drawImage('./Sprites/UI/controlsButton.png', app.width/2-150, 575)
+
+def drawControls(app):
+    drawRect(0, 0, app.width, app.height, fill='white')
+    drawImage('./Sprites/UI/controls.png', 0, 0)
+    drawImage('./Sprites/UI/backButton.png', 5, 730)
+    drawLabel('Move up, down, left, and right', 500, 150, size=20)
+    drawLabel('Start/Stop interacting w/ objects in environment', 400, 300, size=20)
+    drawLabel('Start/Stop reading color commands (to cast spells)', 400, 425, size=20)
+    drawLabel('||Prev. message/change to green ||', 160, 700, size=17)
+    drawLabel('||change to blue ||', 400, 700, size=17)
+    drawLabel('||Next message/change to red||', 640, 700, size=17)
+
+def drawSpellsScreen(app):
+    drawRect(0, 0, app.width, app.height, fill='white')
+    drawImage('./Sprites/UI/spells.png', 0, 0)
+    drawImage('./Sprites/UI/backButton.png', 5, 730)
 
 
 def drawUI(app):
@@ -1192,7 +1257,7 @@ def drawUI(app):
         detectionColor='green'
     drawCircle(app.width-50, app.height-50, 5, fill=micColor)
     drawCircle(app.width-30, app.height-50, 5, fill=detectionColor)
-    drawLabel(app.spell, 200, 300, size = 15)
+    drawLabel(app.spell, 200, 300, size = 20)
     drawMeter(app)
     drawSpellCooldown(app, 50, 20, 100, 10)
     drawCommand(app)
@@ -1225,25 +1290,22 @@ def drawCommand(app):
 
 def drawGameOver(app):
     drawRect(app.width/2, app.height/2, app.width - 80, app.height - 80, opacity=90, border='black', borderWidth=5, fill='white', align='center')
-    drawLabel('GAME OVER', 200, 70, fill='red', size=30, bold=True)
-    drawRect(app.width/2, 400, 300, 50, fill='white', border='black', borderWidth=4, align = 'center')
-    drawLabel('Restart', app.width/2, 400, align = 'center', size=20)
-    drawRect(app.width/2, 500, 300, 50, fill='white', border='black', borderWidth=4, align = 'center')
-    drawLabel('Start Screen', app.width/2, 500, align = 'center', size=20)
-    # drawLabel(f'Game will restart in {int(app.gameoverTimer)} seconds', app.width/2, app.height/2, size=20)
+    drawLabel('GAME OVER', app.width/2, 70, fill='red', size=30, bold=True)
+    drawImage('./Sprites/UI/retryButton.png',app.width/2 - 150, 375)
+    drawImage('./Sprites/UI/startScreenButton.png',app.width/2-150, 475)
 
 def drawPauseScreen(app):
-    drawRect(app.width/2, app.height/2, app.width - 200, 100, opacity=90, border='black', borderWidth=5, fill='white', align='center')
-    drawLabel('Pause', app.width/2, app.height/2 - 10, size=30, bold=True)
-    drawLabel('Press "Esc" to return', app.width/2, app.height/2 + 30)
+    drawRect(app.width/2, app.height/2, app.width - 80, app.height - 80, opacity=90, border='black', borderWidth=5, fill='white', align='center')
+    drawLabel('Pause', app.width/2, 100, size=30, bold=True)
+    drawImage('./Sprites/UI/retryButton.png',app.width/2 - 150, 375)
+    drawImage('./Sprites/UI/startScreenButton.png',app.width/2-150, 475)
+    drawImage('./Sprites/UI/controlsButton.png', app.width/2-150, 575)
+    if(app.waveMode): drawImage('./Sprites/UI/spellsButton.png', app.width/2-150, 675)
+    drawLabel('Press "Esc" to return', app.width/2, 200, size = 16)
 
 def onStep(app):
     if(app.onStartScreen):
         return
-    # if(app.gameover):
-    #     app.gameoverTimer -= 1/app.stepsPerSecond
-    #     if(app.gameoverTimer < 0):
-    #         reset(app)
     if(not app.paused):
         takeStep(app)
     if(app.step % app.stepsPerSecond == 0):

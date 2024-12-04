@@ -4,11 +4,11 @@ def unlockDash(app):
 
 def unlockFireball(app):
     app.SPELLS['Fireball'] = ['red', 'green', 'red']
-    app.SPELLCOOLDOWNS['Fireball'] = 3
+    app.SPELLCOOLDOWNS['Fireball'] = 5
 
-def unlockThunder(app):
-    app.SPELLS['Thunder'] = ['blue', 'red']
-    app.SPELLCOOLDOWNS['Thunder'] = 5
+def unlockFreeze(app):
+    app.SPELLS['Freeze'] = ['blue', 'red']
+    app.SPELLCOOLDOWNS['Freeze'] = 2
 
 def unlockHeal(app):
     app.SPELLS['Heal'] = ['green']
@@ -69,8 +69,8 @@ def cast(app, player, spell):
         print("FIREBALL!!!", app.SPELLS)
         player.fireball(app)
     
-    elif(spell == 'Thunder'):
-        player.thunder(app)
+    elif(spell == 'Freeze'):
+        player.freeze(app)
 
     elif(spell == 'Heal'):
         player.heal(app)
