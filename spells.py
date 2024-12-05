@@ -52,7 +52,6 @@ def trackSpellCooldown(app, secondsPassed):
 def cast(app, player, spell):
 
     if(not spell in app.SPELLS):
-        print("NOT FOUND")
         return
 
     if(app.spellCooldown > 0):
@@ -66,7 +65,6 @@ def cast(app, player, spell):
         player.dash()
     
     elif(spell == 'Fireball'):
-        print("FIREBALL!!!", app.SPELLS)
         player.fireball(app)
     
     elif(spell == 'Freeze'):

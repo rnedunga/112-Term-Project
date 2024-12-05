@@ -1,11 +1,8 @@
 import time
 import textwrap
-import asyncio
 from cmu_graphics import *
 from Sprites import *
-from PIL import Image
 import random
-import os, pathlib
 from loadSound import *
 
 import pyaudio
@@ -401,7 +398,6 @@ class Enemy:
     def __eq__(self, other):
         if(isinstance(other, Enemy)):
             if(other.id == None or self.id == None):
-                print(f'Either {other} or {self} have no id.')
                 return False
             return self.id == other.id
         return False
@@ -964,15 +960,12 @@ class Spawner:
         self.maxSpawn = maxSpawn
 
     def spawn(self, app):
-        print('spawn')
         app.map.addEnemy(Enemy(self.x, self.y, 32, 32))
 
     def runSpawner(self, app, secondsPassed):
         self.timer += secondsPassed
         if(self.timer >= self.spawnRate):
-            print('checkingSpawn')
             if(distance(app.player.x, app.player.y, self.x, self.y) < 160):
-                print('distance too small')
                 return
             self.timer = 0
             if len(app.map.enemies) < self.maxSpawn:
@@ -1266,8 +1259,6 @@ def onMousePress(app, mouseX, mouseY):
         elif(app.paused and app.waveMode and ((app.width/2 - 200 < mouseX < app.width/2 + 200) and (675 < mouseY < 725))):
             SOUNDS['click'].play(restart=True)
             goToSpellsScreen(app)
-
-    print(32*(mouseX//32), 32*(mouseY//32))
 
 def redrawAll(app):
     if(app.onStartScreen):
