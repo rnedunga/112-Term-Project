@@ -5,6 +5,8 @@ from cmu_graphics import *
 from Sprites import *
 from PIL import Image
 import random
+import os, pathlib
+from loadSound import *
 
 import pyaudio
 import numpy as np
@@ -21,6 +23,7 @@ INSTRUCTIONS = ['Pay attention to these instructions. Press right arrow key to m
                 'Pressing "E" on your keyboard will allow you to interact with these objects',
                 'Interacting with the right objects will give you access to specific spells (but right now you don\'t have access to any)',
                 'To cast spells, you must record a specific combination of colors',
+                'Notice, there\'s a cooldown bar for the spells you cast on the top left corner',
                 'To begin recording your color input, press "C", and to finish giving color input, press "C" again. If that combination corresponds to a spell, it will be cast.',
                 'After pressing "C" to record, you must switch between colors to record a specific color combination. In pressing "C" once more, the combination recorded will be evaluated.',
                 'You can switch between colors with your voice. The higher your voice goes, the further up in the color meter it will go (top left corner of screen) and vice versa.',
@@ -30,6 +33,23 @@ INSTRUCTIONS = ['Pay attention to these instructions. Press right arrow key to m
                 'If you are having difficulties with the voice detection, close your microphone and use the arrow keys to give your color input (more info in controls screen)',
                 'For more information about controls, press "esc" to pause and access controls screen.',
                 'Good Luck!']
+
+SOUNDS = {'castFireball':loadSound('./Sound/castFireball.wav'),
+          'castFreeze':loadSound('./Sound/castFreeze.wav'),
+          'heal':loadSound('./Sound/heal.wav'),
+          'dash':loadSound('./Sound/dash.wav'),
+          'fireball':loadSound('./Sound/flyingFireball.wav'),
+          'freeze':loadSound('./Sound/freeze.wav'),
+          'death':loadSound('./Sound/death.wav'),
+          'takeDamage-1':loadSound('./Sound/takeDamage-1.wav'), 'takeDamage-2':loadSound('./Sound/takeDamage-2.wav'),
+          'explosion':loadSound('./Sound/explosion.wav'),
+          'zombieTakeDamage':loadSound('./Sound/zombieTakeDamage.wav'),
+          'zombieDeath':loadSound('./Sound/zombieDeath.wav'),
+          'walk':loadSound('./Sound/walk.wav'),
+          'gameover':loadSound('./Sound/gameover.wav'),
+          'click':loadSound('./Sound/click.wav'),
+          'titleSong':loadSound('./Sound/titleSong.wav'),
+          'battleMusic':loadSound('./Sound/testBattleMusic.wav')}
 
 def empty_function(app=None, a=None, b=None, c=None):
     pass
@@ -430,6 +450,8 @@ class Enemy:
         app.map.addEffect(Effect(('blood', 26, 30, 100, 100), self.x + self.width/2, self.y + self.height/2))
         if(self.health <= 0):
             self.death(app)
+        else:
+            SOUNDS['zombieTakeDamage'].play(restart=True)
     
     def zap(self):
         self.zapped = True
@@ -443,6 +465,7 @@ class Enemy:
                 self.zapTimer -= secondsPassed
     
     def death(self, app):
+        SOUNDS['zombieDeath'].play(restart=True)
         if self in app.map.enemies:
             app.map.enemies.remove(self)
 
@@ -598,6 +621,9 @@ class Player:
     def __init__(self, x, y, width, height, sprites, speed=3):
         self.x = x
         self.y = y
+        self.prevX = x
+        self.prevY = y
+        self.moving = False
         self.dx = 0
         self.dy = 0
         self.trueDx = 0
@@ -648,8 +674,10 @@ class Player:
 
 
     def takeDamage(self, app, damage):
+        soundIndex = int(random.random()*2) + 1
         if(not self.isImmune):
             self.health -= damage
+            SOUNDS[f'takeDamage-{soundIndex}'].play(restart=True)
             self.startImmunity()
         if(self.health <= 0):
             self.death(app)
@@ -669,6 +697,7 @@ class Player:
             self.healthBarColor = 'red'
 
     def dash(self):
+        SOUNDS['dash'].play(restart=True)
         self.speed *= 2
         self.dashTimer = 0.5
         self.isDashing = True
@@ -682,8 +711,13 @@ class Player:
 
     def fireball(self, app):
         app.map.projectiles.append(Fireball(self.x + self.width/2, self.y + self.height/2, self.dx*3, self.dy*3, Enemy))
+        SOUNDS['castFireball'].play(restart=True)
+        SOUNDS['fireball'].play(restart=True, loop=True)
+
 
     def freeze(self, app):
+        SOUNDS['freeze'].play(restart=True)
+        SOUNDS['castFreeze'].play(restart=True)
         for enemy in app.map.enemies:
             if(distance(self.x, self.y, enemy.x + enemy.width/2, enemy.y + enemy.height/2) < 90):
                 enemy.takeDamage(app, 2)
@@ -692,11 +726,11 @@ class Player:
         app.map.addEffect(Effect(('freeze', 6, 3, 64, 64), self.x + self.width/2, self.y + self.height/2, radius=90, areaColor=rgb(138, 138, 255)))
 
     def heal(self, app):
+        SOUNDS['heal'].play(restart=True)
         if(self.health < 10):
             self.health += 1
 
     def move(self, app, keys):
-
         if(app.textBox.display):
             return
 
@@ -735,6 +769,20 @@ class Player:
                 self.y -= dy
     
     def checkMovement(self):
+
+        if(self.moving):
+            if(almostEqual(self.x, self.prevX) and almostEqual(self.y, self.prevY)):
+                self.moving = False
+        elif(not (almostEqual(self.x, self.prevX) and almostEqual(self.y, self.prevY))):
+            self.moving = True
+
+        self.prevX = self.x
+        self.prevY = self.y
+
+        if(self.moving):
+            if(self.x == self.prevX and self.y == self.prevY):
+                self.moving = False
+
         if(self.dy > 0):
             anim = 'forwards'
         elif(self.dy < 0):
@@ -771,6 +819,7 @@ class Player:
         cast(app, self, spell)
 
     def death(self, app):
+        app.gameoverMessage = 'You died...'
         gameover(app)
 
 class Projectile:
@@ -839,6 +888,8 @@ class Fireball(Projectile):
         drawCircle(self.x - app.camX, self.y-app.camY, self.radius, align='top-left', fill='red')
 
     def destroy(self, app):
+        SOUNDS['fireball'].pause()
+        SOUNDS['explosion'].play(restart=True)
         for localEnemy in app.map.enemies:
             dist = distance(self.x, self.y, localEnemy.x + localEnemy.width/2, localEnemy.y + localEnemy.height/2)
             if(dist < 30):
@@ -928,15 +979,16 @@ class Spawner:
                 self.spawn(app)
 
 def gameover(app):
+    SOUNDS['battleMusic'].play()
+    SOUNDS['battleMusic'].pause()
+    SOUNDS['gameover'].play(restart=True)
     app.gameover = True
     app.paused = True
 
 def onAppStart(app):
-    app.onStartScreen = True
+    goToStartScreen(app)
     app.onControlsScreen = False
     app.onSpellsScreen = False
-    app.learnMode = False
-    app.waveMode = False
     app.wave = 1
     app.waveTimer = 0
     reset(app)
@@ -955,6 +1007,8 @@ def startLearnMode(app):
     app.learnMode = True
     initializeLearnMode(app)
     app.textBox.displayMessage(INSTRUCTIONS)
+    SOUNDS['titleSong'].play(loop=True)
+    SOUNDS['titleSong'].pause()
 
 def startWaveMode(app):
     app.onStartScreen = False
@@ -963,11 +1017,16 @@ def startWaveMode(app):
     app.wave = 1
     app.waveTimer = 0
     initializeWaveMode(app)
+    SOUNDS['titleSong'].play(restart=True, loop=True)
+    SOUNDS['titleSong'].pause()
 
 def goToStartScreen(app):
     app.onStartScreen = True
     app.learnMode = False
     app.waveMode = False
+    SOUNDS['battleMusic'].play(loop=True)
+    SOUNDS['battleMusic'].pause()
+    SOUNDS['titleSong'].play(loop=True)
 
 def goToControlsScreen(app):
     app.onControlsScreen = True
@@ -1018,6 +1077,8 @@ def reset(app):
     app.spellCooldown = 0
     app.startingSpellCooldown = 0
 
+    app.gameoverMessage = ''
+
     initializeMap(app)
     app.player = Player(app.width/2 - 16, app.height/2 - 16, 32, 32, sprites=PLAYERSPRITES, speed=3)
 
@@ -1052,6 +1113,7 @@ def checkWaveMode(app, secondsPassed):
         setWave(app, app.wave+1)
     app.waveTimer -= secondsPassed
     if(app.waveTimer <= 0):
+        app.gameoverMessage = 'You ran out of time!'
         gameover(app)
 
 def initializeMap(app):
@@ -1134,6 +1196,7 @@ def initializeLearnMode(app):
     app.map.addSpawner(Spawner(400, 64, 10, 2))
 
 def initializeWaveMode(app):
+    SOUNDS['battleMusic'].play(loop=True)
     reset(app)
     setWave(app, 1)
 
@@ -1168,10 +1231,6 @@ def onKeyPress(app, key):
     elif(key == 'up' or key == 'down'):
         app.color = 'blue'
 
-#DEBUG KEYPRESS:
-    elif(key.isdigit() and app.waveMode):
-        setWave(app, int(key))
-
 def onKeyHold(app, keys):
     if(app.paused):
         return
@@ -1180,24 +1239,32 @@ def onKeyHold(app, keys):
 def onMousePress(app, mouseX, mouseY):
     if(app.onControlsScreen or app.onSpellsScreen):
         if(0 < mouseX < 200 and 730 < mouseY < 800):
+            SOUNDS['click'].play(restart=True)
             app.onControlsScreen = False
             app.onSpellsScreen = False
     elif(app.onStartScreen):
         if((app.width/2 - 200 < mouseX < app.width/2 + 200) and (375 < mouseY < 425)):
+            SOUNDS['click'].play(restart=True)
             startLearnMode(app)
         elif((app.width/2 - 200 < mouseX < app.width/2 + 200) and (475 < mouseY < 525)):
+            SOUNDS['click'].play(restart=True)
             startWaveMode(app)
         elif((app.width/2 - 200 < mouseX < app.width/2 + 200) and (575 < mouseY < 625)):
+            SOUNDS['click'].play(restart=True)
             goToControlsScreen(app)
     elif(app.gameover or app.paused):
         if((app.width/2 - 200 < mouseX < app.width/2 + 200) and (375 < mouseY < 425)):
+            SOUNDS['click'].play(restart=True)
             if(app.waveMode): initializeWaveMode(app)
             elif(app.learnMode): initializeLearnMode(app)
         elif((app.width/2 - 200 < mouseX < app.width/2 + 200) and (475 < mouseY < 525)):
+            SOUNDS['click'].play(restart=True)
             goToStartScreen(app)
         elif((app.width/2 - 200 < mouseX < app.width/2 + 200) and (575 < mouseY < 625)):
+            SOUNDS['click'].play(restart=True)
             goToControlsScreen(app)
         elif(app.paused and app.waveMode and ((app.width/2 - 200 < mouseX < app.width/2 + 200) and (675 < mouseY < 725))):
+            SOUNDS['click'].play(restart=True)
             goToSpellsScreen(app)
 
     print(32*(mouseX//32), 32*(mouseY//32))
@@ -1221,6 +1288,7 @@ def redrawAll(app):
             drawPauseScreen(app)
 
 def drawWaveMode(app):
+    drawRect(100, app.height - 50, 220, 50, fill='white', border='black', borderWidth=4, opacity = 70, align='center')
     drawLabel(f'Time\'s running out: {int(app.waveTimer)}', 100, app.height - 50, size=20)
     drawLabel(f'Wave: {app.wave}', app.width/2, 70, size = 30)
 
@@ -1290,7 +1358,8 @@ def drawCommand(app):
 
 def drawGameOver(app):
     drawRect(app.width/2, app.height/2, app.width - 80, app.height - 80, opacity=90, border='black', borderWidth=5, fill='white', align='center')
-    drawLabel('GAME OVER', app.width/2, 70, fill='red', size=30, bold=True)
+    drawLabel('GAME OVER', app.width/2, 120, fill='red', size=50, bold=True)
+    drawLabel(app.gameoverMessage, app.width/2, 200, size=25)
     drawImage('./Sprites/UI/retryButton.png',app.width/2 - 150, 375)
     drawImage('./Sprites/UI/startScreenButton.png',app.width/2-150, 475)
 
