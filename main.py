@@ -31,22 +31,22 @@ INSTRUCTIONS = ['Pay attention to these instructions. Press right arrow key to m
                 'For more information about controls, press "esc" to pause and access controls screen.',
                 'Good Luck!']
 
-SOUNDS = {'castFireball':loadSound('./Sound/castFireball.wav'),
-          'castFreeze':loadSound('./Sound/castFreeze.wav'),
-          'heal':loadSound('./Sound/heal.wav'),
-          'dash':loadSound('./Sound/dash.wav'),
-          'fireball':loadSound('./Sound/flyingFireball.wav'),
-          'freeze':loadSound('./Sound/freeze.wav'),
-          'death':loadSound('./Sound/death.wav'),
-          'takeDamage-1':loadSound('./Sound/takeDamage-1.wav'), 'takeDamage-2':loadSound('./Sound/takeDamage-2.wav'),
-          'explosion':loadSound('./Sound/explosion.wav'),
-          'zombieTakeDamage':loadSound('./Sound/zombieTakeDamage.wav'),
-          'zombieDeath':loadSound('./Sound/zombieDeath.wav'),
-          'walk':loadSound('./Sound/walk.wav'),
-          'gameover':loadSound('./Sound/gameover.wav'),
-          'click':loadSound('./Sound/click.wav'),
-          'titleSong':loadSound('./Sound/titleSong.wav'),
-          'battleMusic':loadSound('./Sound/testBattleMusic.wav')}
+SOUNDS = {'castFireball':loadSound('./Sound/castFireball.mp3'),
+          'castFreeze':loadSound('./Sound/castFreeze.mp3'),
+          'heal':loadSound('./Sound/heal.mp3'),
+          'dash':loadSound('./Sound/dash.mp3'),
+          'fireball':loadSound('./Sound/flyingFireball.mp3'),
+          'freeze':loadSound('./Sound/freeze.mp3'),
+          'death':loadSound('./Sound/death.mp3'),
+          'takeDamage-1':loadSound('./Sound/takeDamage-1.mp3'), 'takeDamage-2':loadSound('./Sound/takeDamage-2.mp3'),
+          'explosion':loadSound('./Sound/explosion.mp3'),
+          'zombieTakeDamage':loadSound('./Sound/zombieTakeDamage.mp3'),
+          'zombieDeath':loadSound('./Sound/zombieDeath.mp3'),
+          'walk':loadSound('./Sound/walk.mp3'),
+          'gameover':loadSound('./Sound/gameover.mp3'),
+          'click':loadSound('./Sound/click.mp3'),
+          'titleSong':loadSound('./Sound/titleSong.mp3'),
+          'battleMusic':loadSound('./Sound/testBattleMusic.mp3')}
 
 def empty_function(app=None, a=None, b=None, c=None):
     pass

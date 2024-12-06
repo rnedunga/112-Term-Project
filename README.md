@@ -1,5 +1,7 @@
 "# Cast Your Heart Out! - 112-Term-Project" 
 
+Dependencies: pyaudio, numpy, scipy.signal
+
 This project is a wizard game that uses voice input to cast spells
 *Please use headphones for a proper experience with the game/pitch detection
 
@@ -35,12 +37,28 @@ These are the instructions in-game:
 'For more information about controls, press "esc" to pause and access controls screen.',
 'Good Luck!'
 
+Instructions on how to run the game:
+
+Install dependencies pyaudio, numpy, and scipy.signal by typing in your terminal (ignore quotes): "pip install pyaudio", "pip install numpy", "pip install scipy".To run, in your terminal, access the path to the folder containing the main.py file. Then, run "python main.py". If you're using an editor, just run the main.py file. 
+
+Shortcut Commands:
+
+There are none! The game should already display most of what it has to offer right off the bat (in case you are struggling to learn spells in the begginning, you can skip to Wave Mode, where all the spells are already unlocked and you can access all the spell combinations in the pause menu).
+
+
 CREDITS:
+
     9 Lines of code from Chat GPT in frequencyDetection.py (lines 18-34)
+
     I used a spritesheet to make the map for the game. Credit link: https://limezu.itch.io/
+    
     Credit for the zombie animation sprites: https://mesiiue.itch.io/simple-topdown-zombie
+    
     Credit for the blood (when zombies take damage) sprites: https://xyezawr.itch.io/gif-free-pixel-effects-pack-5-blood-effects
+    
     I did not write the loadSound.py file (Made by TA. Posted on ED)
+    
     As for the rest of the art, including UI and character sprite, I made them all myself with Piskel
+    
     I also made all the sounds (As you probably noticed). 
 
